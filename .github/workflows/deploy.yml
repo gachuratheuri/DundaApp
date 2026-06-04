@@ -1,0 +1,50 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+      - '.github/workflows/deploy.yml'
+
+jobs:
+  build_and_deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Elixir
+      uses: erlef/setup-beam@v1
+      with:
+        elixir-version: '1.15'
+        otp-version: '26'
+        
+    - name: Restore dependencies cache
+      uses: actions/cache@v3
+      with:
+        path: backend/deps
+        key: ${{ runner.os }}-mix-${{ hashFiles('backend/mix.lock') }}
+        restore-keys: ${{ runner.os }}-mix-
+        
+    - name: Install dependencies
+      run: mix deps.get
+      working-directory: ./backend
+        
+    - name: Run Tests
+      run: mix test
+      working-directory: ./backend
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./backend
+        push: false # Set to true when registry is configured
+        tags: dundaregistry.azurecr.io/dunda-api:latest
+        
+    - name: Deploy to Kubernetes
+      run: |
+        echo "Configure your Kubeconfig here"
+        # kubectl apply -f infra/k8s/

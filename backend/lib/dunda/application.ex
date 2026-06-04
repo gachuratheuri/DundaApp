@@ -1,0 +1,53 @@
+defmodule Dunda.Application do
+  use Application
+
+  @impl true
+  def start(_type, _args) do
+    topologies = [
+      k8s: [
+        strategy: Cluster.Strategy.Kubernetes.DNS,
+        config: [
+          service: "dunda-api-headless",
+          application_name: "dunda"
+        ]
+      ]
+    ]
+
+    # Start order is load-bearing:
+    #  1. Vault     — keys available before any Ecto schema initialises
+    #  2-3. Repos   — write path, then read replica
+    #  4. Redix     — Redis pool before any inventory process
+    #  5. Cluster   — join the cluster BEFORE Horde starts
+    #  6-7. Horde   — registry must exist before the dynamic supervisor registers
+    #  8-9. Payments — CRI routing registry + state-machine supervisor
+    #  10. Endpoint — accept HTTP only after all data deps are healthy
+    #  11. Oban     — background jobs last
+    children =
+      [
+        Dunda.Vault,
+        Dunda.Repo,
+        Dunda.ReadRepo,
+        {Redix, name: :redix, host: System.get_env("REDIS_HOST", "localhost")},
+        {Cluster.Supervisor, [topologies, [name: Dunda.ClusterSupervisor]]},
+        {Horde.Registry, [name: Dunda.InventoryRegistry, keys: :unique, members: :auto]},
+        {Horde.DynamicSupervisor,
+         [name: Dunda.InventorySupervisor, strategy: :one_for_one, members: :auto]}
+      ] ++
+        Dunda.Payments.child_specs() ++
+        [
+          # Scraper Bloom pre-filter — must exist before Oban runs ingest jobs.
+          Dunda.Scraper.Dedup,
+          DundaWeb.Endpoint,
+          {Oban, Application.fetch_env!(:dunda, Oban)}
+        ]
+
+    opts = [strategy: :one_for_one, name: Dunda.Supervisor]
+    Supervisor.start_link(children, opts)
+  end
+
+  @impl true
+  def config_change(changed, _new, removed) do
+    DundaWeb.Endpoint.config_change(changed, removed)
+    :ok
+  end
+end

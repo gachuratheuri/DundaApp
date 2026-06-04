@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: dunda-api-service
+  namespace: default
+  labels:
+    app: dunda-api
+spec:
+  type: ClusterIP
+  selector:
+    app: dunda-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: 4000
+    - name: epmd
+      port: 4369
+      targetPort: 4369
