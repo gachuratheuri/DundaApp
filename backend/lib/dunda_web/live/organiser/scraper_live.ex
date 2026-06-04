@@ -1,4 +1,4 @@
-defmodule DundaWeb.ScraperSettingsLive do
+defmodule DundaWeb.Organiser.ScraperLive do
   @moduledoc """
   The Organiser Portal scraper-configuration surface.
 

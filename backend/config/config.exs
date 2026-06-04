@@ -6,11 +6,12 @@ config :dunda, Oban,
   repo: Dunda.Repo,
   plugins: [
     Oban.Plugins.Pruner,
-    # Unified cron: scraper fan-out every 30 min, organiser payouts daily 06:00 EAT (03:00 UTC).
+    # Unified cron: scraper fan-out every 30 min, organiser payouts daily 06:00 EAT (03:00 UTC), escrow cleanup every minute.
     {Oban.Plugins.Cron,
      crontab: [
        {"*/30 * * * *", Dunda.Workers.DispatchWorker},
-       {"0 3 * * *", Dunda.Workers.PayoutWorker, args: %{"cron" => true}}
+       {"0 3 * * *", Dunda.Workers.PayoutWorker, args: %{"cron" => true}},
+       {"* * * * *", Dunda.Workers.EscrowReclaimer}
      ]}
   ],
   queues: [

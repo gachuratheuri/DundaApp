@@ -46,6 +46,39 @@ defmodule DundaWeb.AuthController do
   end
 
   @doc """
+  Sends an OTP to the provided phone number. Mocked for development.
+  """
+  def send_otp(conn, %{"phone" => phone}) do
+    # In production, this would call Africa's Talking or Twilio.
+    # For now, we mock the OTP as "0000" and return success.
+    json(conn, %{success: true, message: "OTP sent to #{phone}"})
+  end
+
+  @doc """
+  Verifies the OTP and logs the user in (or creates a phone-based account).
+  """
+  def verify_otp(conn, %{"phone" => phone, "otp" => otp}) do
+    if otp == "0000" do
+      # Upsert phone-based user
+      case Accounts.upsert_oauth_user(%{provider: "phone", uid: phone, email: "#{phone}@dunda.app", name: "Guest User", avatar_url: nil}) do
+        {:ok, user} ->
+          token = Token.sign(user)
+          render(conn, :auth_success, user: user, token: token)
+        {:error, changeset} ->
+          conn
+          |> put_status(:unprocessable_entity)
+          |> put_view(json: DundaWeb.ErrorJSON)
+          |> render(:"422", changeset: changeset)
+      end
+    else
+      conn
+      |> put_status(:unauthorized)
+      |> put_view(json: DundaWeb.ErrorJSON)
+      |> render(:"401")
+    end
+  end
+
+  @doc """
   Handles Google OAuth login using a simulated sandbox flow if actual validation is not configured,
   or standard validation if real keys are provided.
   Expected params: %{"token" => google_id_token}

@@ -23,11 +23,18 @@ defmodule DundaWeb.Router do
     get "/healthz", HealthController, :show
   end
 
-  # Organiser Portal (LiveView). Keystone for the unified scraper config.
-  scope "/portal", DundaWeb do
+  # Organiser Portal (LiveView).
+  scope "/portal", DundaWeb.Organiser do
     pipe_through :browser
 
-    live "/scraper", ScraperSettingsLive, :index
+    live "/", DashboardLive, :index
+    live "/scraper", ScraperLive, :index
+    live "/events", EventsLive, :index
+    live "/events/new", EventsLive, :new
+    live "/events/:id/tickets", TicketsLive, :index
+    live "/team", TeamLive, :index
+    live "/health", HealthLive, :index
+    live "/support", SupportLive, :index
   end
 
   scope "/api", DundaWeb do
@@ -37,6 +44,8 @@ defmodule DundaWeb.Router do
     post "/auth/register", AuthController, :register
     post "/auth/login", AuthController, :login
     post "/auth/google", AuthController, :google
+    post "/auth/otp/send", AuthController, :send_otp
+    post "/auth/otp/verify", AuthController, :verify_otp
 
     get "/events", EventController, :index
     get "/events/:id", EventController, :show
