@@ -39,4 +39,22 @@ config :dunda, :daraja, adapter: Dunda.Payments.Daraja.HTTP
 # Default Pesapal adapter (consumer hosted-checkout); overridden per-environment below.
 config :dunda, :pesapal, adapter: Dunda.Billing.Pesapal.HTTP
 
+# ── Organiser-portal asset pipeline (Tailwind + esbuild) ──────────────────────
+# Replaces the dev-only Tailwind CDN with a compiled, production-ready bundle.
+config :esbuild,
+  version: "0.21.5",
+  dunda: [
+    args:
+      ~w(js/app.js --bundle --target=es2017 --outdir=../priv/static/assets --external:/fonts/* --external:/images/*),
+    cd: Path.expand("../assets", __DIR__),
+    env: %{"NODE_PATH" => Path.expand("../deps", __DIR__)}
+  ]
+
+config :tailwind,
+  version: "3.4.6",
+  dunda: [
+    args: ~w(--config=tailwind.config.js --input=css/app.css --output=../priv/static/assets/app.css),
+    cd: Path.expand("../assets", __DIR__)
+  ]
+
 import_config "#{config_env()}.exs"

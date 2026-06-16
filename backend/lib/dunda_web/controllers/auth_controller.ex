@@ -73,8 +73,7 @@ defmodule DundaWeb.AuthController do
     else
       conn
       |> put_status(:unauthorized)
-      |> put_view(json: DundaWeb.ErrorJSON)
-      |> render(:"401")
+      |> json(%{error: "Invalid OTP"})
     end
   end
 

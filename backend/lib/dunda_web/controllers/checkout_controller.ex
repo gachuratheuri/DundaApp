@@ -31,6 +31,31 @@ defmodule DundaWeb.CheckoutController do
     end
   end
 
+  @doc """
+  GET /api/checkout/:id/status
+
+  Polls the status of an M-Pesa STK push checkout.
+  """
+  def status(conn, %{"id" => transaction_id}) do
+    cond do
+      Dunda.Ledger.settled?(transaction_id) ->
+        json(conn, %{data: %{status: "success"}})
+
+      horde_registry_lookup_active?(transaction_id) ->
+        json(conn, %{data: %{status: "pending"}})
+
+      true ->
+        json(conn, %{data: %{status: "failure"}})
+    end
+  end
+
+  defp horde_registry_lookup_active?(transaction_id) do
+    case Horde.Registry.lookup(Dunda.Payments.TransactionRegistry, transaction_id) do
+      [_ | _] -> true
+      [] -> false
+    end
+  end
+
   defp validate(params) do
     with {:ok, event_id} <- require(params, "event_id"),
          {:ok, user_id} <- require(params, "user_id"),
@@ -55,6 +80,13 @@ defmodule DundaWeb.CheckoutController do
   end
 
   defp parse_quantity(q) when is_integer(q) and q > 0, do: q
-  defp parse_quantity(q) when is_binary(q), do: max(String.to_integer(q), 1)
+
+  defp parse_quantity(q) when is_binary(q) do
+    case Integer.parse(q) do
+      {n, _rest} when n > 0 -> n
+      _ -> 1
+    end
+  end
+
   defp parse_quantity(_), do: 1
 end

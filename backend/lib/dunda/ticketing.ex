@@ -12,7 +12,7 @@ defmodule Dunda.Ticketing do
   Issues `count` tickets to `user` for `event` from `order`, minting a JWT for each.
   """
   def issue_tickets(order, event, user, count, tier_label \\ "GENERAL") do
-    price = if order, do: div(order.amount_total, count), else: 0
+    price = if order, do: div(order.amount_cents, 100 * count), else: 0
 
     Enum.map(1..count, fn _ ->
       ticket_id = Ecto.UUID.generate()

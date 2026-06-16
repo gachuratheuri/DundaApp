@@ -24,10 +24,10 @@ defmodule Dunda.Payments.MpesaStateMachine do
   end
 
   @doc """
-  Start state requires the `transaction_id` plus the `ticket_tier_id` and
+  Start state requires the `transaction_id` plus the `ticket_tier_id`, `quantity`, and
   `user_id` whose escrow must be released on failure.
   """
-  def init(%{transaction_id: _, ticket_tier_id: _, user_id: _} = attrs) do
+  def init(%{transaction_id: _, ticket_tier_id: _, user_id: _, quantity: _} = attrs) do
     data =
       Map.merge(
         %{checkout_request_id: nil, retry_count: 0, max_poll_retries: 3},
@@ -51,7 +51,7 @@ defmodule Dunda.Payments.MpesaStateMachine do
 
       {:error, reason} ->
         release(data)
-        {:next_state, :failed, Map.put(data, :failure_reason, reason)}
+        {:stop, :normal, Map.put(data, :failure_reason, reason)}
     end
   end
 
@@ -62,14 +62,15 @@ defmodule Dunda.Payments.MpesaStateMachine do
         data
       ) do
     Ledger.settle(data.transaction_id, receipt)
-    {:next_state, :settled, Map.put(data, :receipt, receipt)}
+    Dunda.Workers.MpesaFulfillmentWorker.enqueue(data.transaction_id, data.ticket_tier_id, data.user_id, data.quantity)
+    {:stop, :normal, Map.put(data, :receipt, receipt)}
   end
 
   # Transition: awaiting_callback → failed (explicit failure callback)
   def awaiting_callback(:cast, {:callback_received, %{"ResultCode" => code}}, data)
       when code != "0" do
     release(data)
-    {:next_state, :failed, Map.put(data, :failure_code, code)}
+    {:stop, :normal, Map.put(data, :failure_code, code)}
   end
 
   # Dead-letter poll trigger
@@ -79,18 +80,19 @@ defmodule Dunda.Payments.MpesaStateMachine do
 
   defp handle_poll(%{retry_count: count, max_poll_retries: max} = data) when count >= max do
     release(data)
-    {:next_state, :failed, Map.put(data, :failure_reason, :poll_exhausted)}
+    {:stop, :normal, Map.put(data, :failure_reason, :poll_exhausted)}
   end
 
   defp handle_poll(data) do
     case Daraja.query_status(data.checkout_request_id) do
       {:ok, %{"ResultCode" => "0"} = result} ->
         Ledger.settle(data.transaction_id, result["MpesaReceiptNumber"])
-        {:next_state, :settled, data}
+        Dunda.Workers.MpesaFulfillmentWorker.enqueue(data.transaction_id, data.ticket_tier_id, data.user_id, data.quantity)
+        {:stop, :normal, data}
 
       {:ok, %{"ResultCode" => code}} when code != "0" ->
         release(data)
-        {:next_state, :failed, Map.put(data, :failure_code, code)}
+        {:stop, :normal, Map.put(data, :failure_code, code)}
 
       {:error, :pending} ->
         Process.send_after(self(), :poll_status, @poll_backoff_ms)

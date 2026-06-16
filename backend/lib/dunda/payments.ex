@@ -27,7 +27,7 @@ defmodule Dunda.Payments do
             start:
               {MpesaStateMachine, :start_link,
                [
-                 %{transaction_id: transaction_id, ticket_tier_id: tier_id, user_id: user_id},
+                 %{transaction_id: transaction_id, ticket_tier_id: tier_id, user_id: user_id, quantity: quantity},
                  [name: via(transaction_id)]
                ]},
             restart: :transient

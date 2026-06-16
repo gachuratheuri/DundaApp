@@ -16,7 +16,7 @@ defmodule Dunda.Accounts.User do
   @type t :: %__MODULE__{}
 
   @kyc_statuses ~w(unverified pending verified rejected)
-  @oauth_providers ~w(google apple facebook)
+  @oauth_providers ~w(google apple facebook phone)
 
   schema "users" do
     field :phone_msisdn, Dunda.Encrypted.Binary

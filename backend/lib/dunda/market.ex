@@ -64,20 +64,22 @@ defmodule Dunda.Market do
 
       # 2. Update ticket ownership
       ticket = Repo.get!(Ticket, listing.ticket_id)
-      
+
       ticket
       |> Ticket.changeset(%{user_id: buyer_id}) # Simplistic transfer, normally invalidates old JWT and mints new one
       |> Repo.update!()
 
-      # 3. Payout seller
-      Ledger.record_transfer(%{
-        from_account: "system_escrow",
-        to_account: "user_wallet_#{listing.seller_id}",
-        amount_cents: listing.asking_price_kes,
-        reference: "resale_#{listing.id}"
-      })
-
-      listing
+      # 3. Payout seller. A failed transfer must roll back the ticket transfer
+      #    above so we never hand over a ticket without crediting the seller.
+      case Ledger.record_transfer(%{
+             from_account: "system_escrow",
+             to_account: "user_wallet_#{listing.seller_id}",
+             amount_cents: listing.asking_price_kes * 100,
+             reference: "resale_#{listing.id}"
+           }) do
+        {:ok, _transfer} -> listing
+        {:error, reason} -> Repo.rollback(reason)
+      end
     end)
   end
 end

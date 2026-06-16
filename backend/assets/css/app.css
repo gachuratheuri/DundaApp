@@ -1,0 +1,45 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ChromaNoir base layer for the Tiketa organiser portal. */
+:root {
+  --void: #000000;
+  --abyss: #060607;
+  --surface: #08080a;
+  --pure-white: #fcfcfd;
+  --periwinkle: #a99fb8;
+  --chroma-violet: #b026ff;
+  --magenta-acid: #ff1c5e;
+  --gold-prestige: #f4f800;
+  --optic-cyan: #00f0ff;
+  --acid-green: #39ff14;
+}
+
+body {
+  background-color: var(--void);
+  color: var(--pure-white);
+  font-family: 'Inter', sans-serif;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: #000000; }
+::-webkit-scrollbar-thumb { background: #1f1f2e; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #2f2f3e; }
+
+/* Glow utilities */
+.glow-cyan { box-shadow: 0 0 15px rgba(0, 240, 255, 0.15); }
+.glow-magenta { box-shadow: 0 0 15px rgba(255, 28, 94, 0.15); }
+
+/* Vestibular safety: honour the OS reduced-motion preference (QA AC-02). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

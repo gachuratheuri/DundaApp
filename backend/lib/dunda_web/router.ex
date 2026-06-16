@@ -28,9 +28,14 @@ defmodule DundaWeb.Router do
     pipe_through :browser
 
     live "/", DashboardLive, :index
+    live "/onboarding", OnboardingLive, :index
+    live "/analytics", AnalyticsLive, :index
+    live "/payouts", PayoutsLive, :index
     live "/scraper", ScraperLive, :index
     live "/events", EventsLive, :index
-    live "/events/new", EventsLive, :new
+    live "/events/new", EventEditorLive, :new
+    live "/events/:id/edit", EventEditorLive, :edit
+    live "/events/:id/extras", ExtrasLive, :index
     live "/events/:id/tickets", TicketsLive, :index
     live "/team", TeamLive, :index
     live "/health", HealthLive, :index
@@ -66,6 +71,7 @@ defmodule DundaWeb.Router do
 
     get "/tickets", TicketController, :index
     post "/checkout", CheckoutController, :create
+    get "/checkout/:id/status", CheckoutController, :status
 
     get "/resale/listings", ResaleController, :index
     post "/resale/listings", ResaleController, :create

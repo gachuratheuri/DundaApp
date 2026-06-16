@@ -51,15 +51,15 @@ defmodule Dunda.Billing do
         case Pesapal.transaction_status(order_tracking_id) do
           {:ok, status} ->
             new_status = classify(status)
-            
+
             # Issue tickets if transitioning to completed
             if new_status == "completed" and order.status != "completed" and order.user_id and order.event_id do
-               user = Accounts.get_user(order.user_id)
-               event = Events.get_event(order.event_id)
-               
-               if user && event do
-                 Ticketing.issue_tickets(order, event, user, order.quantity)
-               end
+              user = Accounts.get_user(order.user_id)
+              event = Events.get_event(order.event_id)
+
+              if user && event do
+                Ticketing.issue_tickets(order, event, user, order.quantity)
+              end
             end
 
             update_status(order, %{

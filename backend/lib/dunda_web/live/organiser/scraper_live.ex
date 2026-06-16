@@ -82,71 +82,124 @@ defmodule DundaWeb.Organiser.ScraperLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <h1>Scraper Settings</h1>
-    <p class="sub">Connect your sources. Saved IDs reconfigure the live scraper with no deploy.</p>
+    <div class="bg-black min-h-screen text-white py-12 px-6 lg:px-12">
+      <div class="mx-auto max-w-7xl">
+        <div class="mb-10 flex flex-col md:flex-row md:items-end justify-between border-b border-white/10 pb-6 gap-4">
+          <div>
+            <h1 class="text-5xl font-black uppercase tracking-tighter font-oswald text-white">
+              Scraper <span class="text-opticyan">Configuration</span>
+            </h1>
+            <p class="text-sm uppercase tracking-widest text-[#A0A0FF] mt-1 font-semibold">
+              Connect your sources. Saved IDs reconfigure the live scraper instantly.
+            </p>
+          </div>
+          <div>
+            <button phx-click="new" class="bg-white/10 border border-white/20 text-white font-bold uppercase tracking-wider text-xs px-5 py-3 hover:bg-white/20 transition-all rounded-none">
+              + New Organisation
+            </button>
+          </div>
+        </div>
 
-    <div :if={@notice} class="notice"><%= @notice %></div>
+        <div :if={@notice} class="mb-6 px-4 py-3 border border-opticyan bg-opticyan/10 text-opticyan text-xs font-bold uppercase tracking-widest">
+          <%= @notice %>
+        </div>
 
-    <div class="grid">
-      <div class="card orglist">
-        <a href="#" phx-click="new" class={is_nil(@selected.id) && "active"}>+ New organisation</a>
-        <a
-          :for={org <- @organisations}
-          href="#"
-          phx-click="select"
-          phx-value-id={org.id}
-          class={@selected.id == org.id && "active"}
-        >
-          <%= org.name %>
-          <span :if={!org.scraper_enabled} class="off"> · paused</span>
-        </a>
-      </div>
-
-      <div class="card">
-        <.form for={@form} phx-change="validate" phx-submit="save">
-          <label>Organisation name</label>
-          <input type="text" name={@form[:name].name} value={@form[:name].value} placeholder="e.g. Carnivore Grounds" />
-          <.error field={@form[:name]} />
-
-          <label>Slug</label>
-          <input type="text" name={@form[:slug].name} value={@form[:slug].value} placeholder="carnivore-grounds" />
-          <.error field={@form[:slug]} />
-
-          <label>Facebook Page ID</label>
-          <input type="text" name={@form[:facebook_page_id].name} value={@form[:facebook_page_id].value} />
-
-          <label>Instagram Account ID</label>
-          <input type="text" name={@form[:instagram_account_id].name} value={@form[:instagram_account_id].value} />
-
-          <label>Eventbrite Org ID</label>
-          <input type="text" name={@form[:eventbrite_org_id].name} value={@form[:eventbrite_org_id].value} />
-
-          <label>HTML scrape URL</label>
-          <input type="text" name={@form[:html_scrape_url].name} value={@form[:html_scrape_url].value} />
-
-          <label>M-Pesa payout phone (2547XXXXXXXX)</label>
-          <input type="tel" name={@form[:mpesa_phone].name} value={@form[:mpesa_phone].value} />
-          <.error field={@form[:mpesa_phone]} />
-
-          <div class="row">
-            <input type="hidden" name={@form[:scraper_enabled].name} value="false" />
-            <input
-              type="checkbox"
-              id="scraper_enabled"
-              name={@form[:scraper_enabled].name}
-              value="true"
-              checked={@form[:scraper_enabled].value in [true, "true"]}
-            />
-            <label for="scraper_enabled" style="margin:0;text-transform:none;color:var(--txt)">
-              Scraper enabled
-            </label>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-10">
+          <!-- Left Col: Organisations List -->
+          <div class="lg:col-span-1 border border-white/10 bg-abyssnavy p-6">
+            <h3 class="text-lg font-black uppercase tracking-wider font-oswald border-b border-white/5 pb-3 mb-4">
+              Configured Sources
+            </h3>
+            <div class="space-y-2">
+              <button
+                :for={org <- @organisations}
+                phx-click="select"
+                phx-value-id={org.id}
+                class={[
+                  "w-full text-left px-4 py-3 text-sm font-bold border transition-colors",
+                  @selected.id == org.id && "bg-opticyan/10 border-opticyan text-opticyan",
+                  @selected.id != org.id && "bg-black/40 border-white/5 text-gray-400 hover:bg-white/5 hover:text-white"
+                ]}
+              >
+                <%= org.name %>
+                <span :if={!org.scraper_enabled} class="text-[10px] text-nebulamagenta uppercase tracking-widest ml-2 border border-nebulamagenta/30 px-1 py-0.5">Paused</span>
+              </button>
+            </div>
           </div>
 
-          <div class="row">
-            <button type="submit" class="btn">Save &amp; dispatch</button>
-            <button type="button" class="btn ghost" phx-click="new">Clear</button>
+          <!-- Right Col: Editor Form -->
+          <div class="lg:col-span-2 border border-white/10 bg-abyssnavy p-8">
+            <h3 class="text-lg font-black uppercase tracking-wider font-oswald border-b border-white/5 pb-3 mb-6">
+              Source Details
+            </h3>
+            <.form for={@form} phx-change="validate" phx-submit="save" class="space-y-6">
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label class="block text-xs uppercase tracking-widest text-gray-500 font-bold mb-2">Organisation Name</label>
+                  <input type="text" name={@form[:name].name} value={@form[:name].value} placeholder="e.g. Carnivore Grounds" class="w-full bg-black/60 border border-white/10 px-4 py-3 text-sm focus:border-opticyan focus:outline-none text-white transition-colors" />
+                  <.error field={@form[:name]} />
+                </div>
+                <div>
+                  <label class="block text-xs uppercase tracking-widest text-gray-500 font-bold mb-2">Slug</label>
+                  <input type="text" name={@form[:slug].name} value={@form[:slug].value} placeholder="carnivore-grounds" class="w-full bg-black/60 border border-white/10 px-4 py-3 text-sm focus:border-opticyan focus:outline-none text-white transition-colors font-mono" />
+                  <.error field={@form[:slug]} />
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label class="block text-xs uppercase tracking-widest text-[#3b5998] font-bold mb-2">Facebook Page ID</label>
+                  <input type="text" name={@form[:facebook_page_id].name} value={@form[:facebook_page_id].value} class="w-full bg-black/60 border border-white/10 px-4 py-3 text-sm focus:border-[#3b5998] focus:outline-none text-white transition-colors font-mono" />
+                </div>
+                <div>
+                  <label class="block text-xs uppercase tracking-widest text-[#E1306C] font-bold mb-2">Instagram Account ID</label>
+                  <input type="text" name={@form[:instagram_account_id].name} value={@form[:instagram_account_id].value} class="w-full bg-black/60 border border-white/10 px-4 py-3 text-sm focus:border-[#E1306C] focus:outline-none text-white transition-colors font-mono" />
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label class="block text-xs uppercase tracking-widest text-[#F05537] font-bold mb-2">Eventbrite Org ID</label>
+                  <input type="text" name={@form[:eventbrite_org_id].name} value={@form[:eventbrite_org_id].value} class="w-full bg-black/60 border border-white/10 px-4 py-3 text-sm focus:border-[#F05537] focus:outline-none text-white transition-colors font-mono" />
+                </div>
+                <div>
+                  <label class="block text-xs uppercase tracking-widest text-solfeggiogold font-bold mb-2">HTML Scrape URL</label>
+                  <input type="text" name={@form[:html_scrape_url].name} value={@form[:html_scrape_url].value} class="w-full bg-black/60 border border-white/10 px-4 py-3 text-sm focus:border-solfeggiogold focus:outline-none text-white transition-colors font-mono" />
+                </div>
+              </div>
+
+              <div class="border-t border-white/10 pt-6">
+                <label class="block text-xs uppercase tracking-widest text-acidgreen font-bold mb-2">M-Pesa Payout Phone (2547XXXXXXXX)</label>
+                <input type="tel" name={@form[:mpesa_phone].name} value={@form[:mpesa_phone].value} class="w-full md:w-1/2 bg-black/60 border border-white/10 px-4 py-3 text-sm focus:border-acidgreen focus:outline-none text-white transition-colors font-mono" />
+                <.error field={@form[:mpesa_phone]} />
+              </div>
+
+              <div class="flex items-center gap-3 py-4">
+                <input type="hidden" name={@form[:scraper_enabled].name} value="false" />
+                <input
+                  type="checkbox"
+                  id="scraper_enabled"
+                  name={@form[:scraper_enabled].name}
+                  value="true"
+                  checked={@form[:scraper_enabled].value in [true, "true"]}
+                  class="w-5 h-5 bg-black border-white/20 text-opticyan focus:ring-opticyan focus:ring-offset-black"
+                />
+                <label for="scraper_enabled" class="text-sm font-bold text-white uppercase tracking-wider">
+                  Enable background scraping for this source
+                </label>
+              </div>
+
+              <div class="flex items-center gap-4 pt-4 border-t border-white/10">
+                <button type="submit" class="bg-opticyan text-black font-black uppercase tracking-wider text-sm px-8 py-4 hover:bg-white transition-all border border-opticyan glow-cyan rounded-none">
+                  Save & Dispatch Job
+                </button>
+                <button type="button" class="border border-white/10 text-gray-400 font-bold uppercase tracking-wider text-sm px-8 py-4 hover:bg-white/5 hover:text-white transition-all rounded-none" phx-click="new">
+                  Reset
+                </button>
+              </div>
+            </.form>
           </div>
-        </.form>
+        </div>
       </div>
     </div>
     """

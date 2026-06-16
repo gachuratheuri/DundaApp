@@ -11,7 +11,28 @@ on:
 jobs:
   build_and_deploy:
     runs-on: ubuntu-latest
-    
+
+    env:
+      MIX_ENV: test
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
@@ -23,9 +44,11 @@ jobs:
         otp-version: '26'
         
     - name: Restore dependencies cache
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
-        path: backend/deps
+        path: |
+          backend/deps
+          backend/_build
         key: ${{ runner.os }}-mix-${{ hashFiles('backend/mix.lock') }}
         restore-keys: ${{ runner.os }}-mix-
         

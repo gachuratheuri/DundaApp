@@ -44,6 +44,11 @@ config :dunda, DundaWeb.Endpoint,
   entitlement_signing_key: "dev-entitlement-signing-key",
   live_view: [signing_salt: "dunda_lv_dev_salt"],
   # Live-reload not configured; the portal is a low-traffic admin surface.
-  check_origin: false
+  check_origin: false,
+  # Rebuild portal assets on change in dev.
+  watchers: [
+    esbuild: {Esbuild, :install_and_run, [:dunda, ~w(--sourcemap=inline --watch)]},
+    tailwind: {Tailwind, :install_and_run, [:dunda, ~w(--watch)]}
+  ]
 
 config :logger, level: :debug

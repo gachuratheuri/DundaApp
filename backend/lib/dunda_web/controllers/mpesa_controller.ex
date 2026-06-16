@@ -24,6 +24,9 @@ defmodule DundaWeb.MpesaController do
 
     case checkout_request_id && Payments.deliver_callback(checkout_request_id, normalised) do
       :ok ->
+        # QA FI-01: push live settlement telemetry to any subscribed client
+        # socket so the app does not depend solely on HTTP status polling.
+        DundaWeb.SettlementChannel.broadcast_settlement(checkout_request_id, normalised)
         :noop
 
       other ->

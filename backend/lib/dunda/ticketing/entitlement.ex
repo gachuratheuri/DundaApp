@@ -2,14 +2,13 @@ defmodule Dunda.Ticketing.Entitlement do
   @moduledoc """
   Mints offline ticket-entitlement tokens.
 
-  The token is a compact JWS (`header.payload.signature`) signed with HMAC-SHA256
-  over the configured `:entitlement_signing_key`. The payload carries a
+  The token is a compact JWS (`header.payload.signature`) signed with ECDSA
+  P-256 (ES256). The private key is derived from the configured
+  `:entitlement_signing_key`, so venue scanners can verify with the corresponding
+  public key only — they never need the signing secret. The payload carries a
   per-ticket `totp_secret`; the holder's device derives a rotating RFC 6238 code
-  from it (see the app's `useTicketTOTP`), and the venue scanner validates the
+  from it (see the app's `useTicketTOTP`), and the scanner validates the
   `<jwt>.<totp>` pair offline.
-
-  NOTE: production should migrate to ECDSA P-256 (ES256) so scanners verify with
-  a public key only — the signing primitive is intentionally isolated here.
   """
 
   @doc """

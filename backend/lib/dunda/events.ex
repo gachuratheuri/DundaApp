@@ -8,6 +8,7 @@ defmodule Dunda.Events do
 
   alias Dunda.Events.Event
   alias Dunda.ReadRepo
+  alias Dunda.Repo
 
   @doc "List all events ordered by start time, each annotated with `:remaining`."
   @spec list_events() :: [Event.t()]
@@ -27,6 +28,29 @@ defmodule Dunda.Events do
     end
   end
 
+  @doc "Create a new event manually."
+  @spec create_event(map()) :: {:ok, Event.t()} | {:error, Ecto.Changeset.t()}
+  def create_event(attrs) do
+    %Event{}
+    |> Event.changeset(attrs)
+    |> Repo.insert()
+    |> case do
+      {:ok, event} ->
+        seed_inventory(event)
+        {:ok, event}
+      {:error, changeset} ->
+        {:error, changeset}
+    end
+  end
+
+  @doc "Update an existing event."
+  @spec update_event(Event.t(), map()) :: {:ok, Event.t()} | {:error, Ecto.Changeset.t()}
+  def update_event(%Event{} = event, attrs) do
+    event
+    |> Event.changeset(attrs)
+    |> Repo.update()
+  end
+
   defp annotate_remaining(%Event{} = event) do
     remaining =
       case Redix.command(:redix, ["GET", "inventory:#{event.id}"]) do
@@ -38,5 +62,13 @@ defmodule Dunda.Events do
     %{event | remaining: remaining}
   rescue
     _ -> %{event | remaining: event.capacity}
+  end
+
+  defp seed_inventory(%Event{id: id, capacity: capacity}) do
+    case Redix.command(:redix, ["SET", "inventory:#{id}", to_string(capacity), "NX"]) do
+      _ -> :ok
+    end
+  rescue
+    _ -> :ok
   end
 end

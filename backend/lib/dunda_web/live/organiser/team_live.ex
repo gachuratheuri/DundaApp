@@ -7,36 +7,49 @@ defmodule DundaWeb.Organiser.TeamLive do
 
   def render(assigns) do
     ~H"""
-    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10 bg-[#020202] text-white min-h-screen">
-      <div class="flex justify-between items-center mb-8">
-        <h1 class="text-4xl font-black uppercase tracking-tighter" style="font-family: 'Oswald', sans-serif;">Team & Roles</h1>
-        <button class="bg-white/10 border border-white/20 text-white px-6 py-3 rounded-full font-bold uppercase tracking-wide hover:bg-white/20 transition-colors">
-          Invite Member
-        </button>
-      </div>
+    <div class="bg-black min-h-screen text-white py-12 px-6 lg:px-12">
+      <div class="mx-auto max-w-7xl">
+        <div class="mb-10 flex flex-col md:flex-row md:items-end justify-between border-b border-white/10 pb-6 gap-4">
+          <div>
+            <h1 class="text-5xl font-black uppercase tracking-tighter font-oswald text-white">
+              Team & <span class="text-opticyan">Roles</span>
+            </h1>
+            <p class="text-sm uppercase tracking-widest text-[#A0A0FF] mt-1 font-semibold">
+              Manage permissions and staff access
+            </p>
+          </div>
+          <div>
+            <button class="bg-opticyan text-black font-black uppercase tracking-wider text-xs px-5 py-3 hover:bg-white transition-all transform hover:-translate-y-0.5 rounded-none border border-opticyan glow-cyan">
+              + Invite Member
+            </button>
+          </div>
+        </div>
 
-      <div class="border border-white/10 rounded-xl overflow-hidden bg-[#0A0A0A]">
-        <table class="w-full text-left text-sm text-gray-400">
-          <thead class="text-xs uppercase bg-[#111] text-[#00F0FF] border-b border-white/10">
-            <tr>
-              <th class="px-6 py-4">Name</th>
-              <th class="px-6 py-4">Role</th>
-              <th class="px-6 py-4 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr class="border-b border-white/10 hover:bg-white/5">
-              <td class="px-6 py-4 font-bold text-white flex items-center gap-3">
-                <div class="w-8 h-8 rounded-full bg-[#FF1C5E] flex items-center justify-center text-white font-bold">D</div>
-                David M.
-              </td>
-              <td class="px-6 py-4"><span class="bg-[#00F0FF]/10 text-[#00F0FF] border border-[#00F0FF]/30 px-3 py-1 rounded-full text-xs">Admin</span></td>
-              <td class="px-6 py-4 text-right">
-                <a href="#" class="text-gray-500 hover:text-white">Manage</a>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <div class="border border-white/10 bg-abyssnavy overflow-hidden">
+          <table class="w-full text-left border-collapse">
+            <thead class="text-xs uppercase bg-[#111] text-gray-500 font-bold tracking-widest border-b border-white/10">
+              <tr>
+                <th class="px-6 py-4">Name</th>
+                <th class="px-6 py-4">Role</th>
+                <th class="px-6 py-4 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-sm">
+              <tr class="hover:bg-white/5 transition-colors">
+                <td class="px-6 py-4 font-black text-white flex items-center gap-4">
+                  <div class="w-10 h-10 rounded-none bg-nebulamagenta border border-nebulamagenta/50 flex items-center justify-center text-white font-oswald text-lg">D</div>
+                  David M.
+                </td>
+                <td class="px-6 py-4">
+                  <span class="bg-opticyan/10 text-opticyan border border-opticyan/30 px-3 py-1 rounded-none text-[10px] font-bold uppercase tracking-widest">Admin</span>
+                </td>
+                <td class="px-6 py-4 text-right">
+                  <a href="#" class="text-xs uppercase tracking-wider font-black text-[#A0A0FF] hover:text-white transition-colors">Manage</a>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
     """

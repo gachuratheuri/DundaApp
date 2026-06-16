@@ -9,8 +9,26 @@ defmodule Dunda.MixProject do
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
-      deps: deps()
+      deps: deps(),
+      releases: releases()
     ]
+  end
+
+  # Release definition. The `build_assets/1` step compiles + digests the
+  # organiser-portal assets (Tailwind minify, esbuild minify, phx.digest)
+  # before the release is assembled, so the binary ships with fingerprinted
+  # CSS/JS and no external CDN dependency.
+  defp releases do
+    [
+      dunda: [
+        steps: [&build_assets/1, :assemble]
+      ]
+    ]
+  end
+
+  defp build_assets(release) do
+    Mix.Task.run("assets.deploy")
+    release
   end
 
   defp elixirc_paths(:test), do: ["lib", "test/support"]
@@ -40,6 +58,8 @@ defmodule Dunda.MixProject do
       {:phoenix, "~> 1.7"},
       {:phoenix_html, "~> 4.1"},
       {:phoenix_live_view, "~> 0.20"},
+      {:tailwind, "~> 0.2", runtime: Mix.env() == :dev},
+      {:esbuild, "~> 0.8", runtime: Mix.env() == :dev},
       {:floki, "~> 0.36"},
       {:bandit, "~> 1.5"},
       {:plug, "~> 1.16"},
@@ -50,10 +70,14 @@ defmodule Dunda.MixProject do
 
   defp aliases do
     [
-      setup: ["deps.get", "ecto.setup"],
+      setup: ["deps.get", "ecto.setup", "assets.setup", "assets.build"],
       "ecto.setup": ["ecto.create", "ecto.migrate"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
-      test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"]
+      test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
+      # Organiser-portal asset pipeline (Tailwind + esbuild), replacing the CDN.
+      "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
+      "assets.build": ["tailwind dunda", "esbuild dunda"],
+      "assets.deploy": ["tailwind dunda --minify", "esbuild dunda --minify", "phx.digest"]
     ]
   end
 end

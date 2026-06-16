@@ -7,6 +7,7 @@ defmodule Dunda.Ledger do
   import Ecto.Query, only: [from: 2]
 
   alias Dunda.Ledger.Entry
+  alias Dunda.Ledger.Transfer
   alias Dunda.Repo
 
   @doc """
@@ -33,6 +34,27 @@ defmodule Dunda.Ledger do
       {:ok, %Entry{id: nil}} -> {:ok, get_by_receipt(receipt)}
       other -> other
     end
+  end
+
+  @doc """
+  Record an internal account-to-account transfer (e.g. crediting a seller after
+  a resale). Idempotent on `:reference` — replaying the same business event
+  returns the existing transfer rather than double-crediting.
+  """
+  @spec record_transfer(map()) :: {:ok, Transfer.t()} | {:error, Ecto.Changeset.t()}
+  def record_transfer(attrs) do
+    %Transfer{}
+    |> Transfer.changeset(attrs)
+    |> Repo.insert(on_conflict: :nothing, conflict_target: :reference)
+    |> case do
+      {:ok, %Transfer{id: nil}} -> {:ok, get_transfer_by_reference(attrs)}
+      other -> other
+    end
+  end
+
+  defp get_transfer_by_reference(attrs) do
+    reference = Map.get(attrs, :reference) || Map.get(attrs, "reference")
+    Repo.get_by(Transfer, reference: reference)
   end
 
   @spec settled?(String.t()) :: boolean()
