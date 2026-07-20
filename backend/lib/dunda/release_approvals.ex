@@ -6,7 +6,12 @@ defmodule Dunda.ReleaseApprovals do
   alias Dunda.ReleaseApproval
   alias Dunda.Repo
 
-  @roles ~w(security finance operations)
+  # Kept identical to Dunda.ReleaseApproval's @roles (single-sourced there
+  # would require exposing it as a public function; both lists are covered
+  # by the exhaustive-pairing test in test/dunda/release_approval_test.exs
+  # and the DB CHECK constraint in the migration below, so drift is caught
+  # in two independent places even without a single shared constant).
+  @roles ~w(security finance operations product privacy)
 
   @spec active_for(atom() | String.t()) :: [ReleaseApproval.t()]
   def active_for(feature) do
@@ -103,6 +108,35 @@ defmodule Dunda.ReleaseApprovals do
       canary_percent: 0,
       approved: false
     }
+  end
+
+  @doc """
+  Read-only evidence for the Phase 12 automatic-rollback-threshold decision
+  (§12.12) — mirrors `Dunda.ReleaseHealth`'s deliberately non-actuating
+  design (`release_health.ex` moduledoc): this never revokes an approval or
+  changes containment itself. An operator or external automation reads this
+  and decides; the human-in-the-loop revocation path
+  (`Dunda.ReleaseApprovals.revoke/2`) is unchanged.
+
+  Breached when `Dunda.ReleaseHealth.evaluate/0` reports unhealthy, OR any
+  reconciliation-diff/DSR-overdue gauge is non-zero, OR any oversell-adjacent
+  signal (checkout p95/p99 breach) is active — i.e. any of the concrete,
+  numeric SLOs this phase implemented.
+  """
+  @spec rollback_threshold_breached?(map()) :: boolean()
+  def rollback_threshold_breached?(counters \\ Dunda.Observability.counters()) do
+    health = Dunda.ReleaseHealth.evaluate(counters)
+
+    not health.healthy or
+      positive_gauge?(counters, :reconciliation_diff_count) or
+      positive_gauge?(counters, :dsr_requests_overdue)
+  end
+
+  defp positive_gauge?(counters, name) do
+    case Map.get(counters, {:gauge, name}) do
+      value when is_number(value) -> value > 0
+      _ -> false
+    end
   end
 
   defp distinct_approvers?(approvals) do

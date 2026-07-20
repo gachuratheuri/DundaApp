@@ -1,0 +1,54 @@
+{
+  "title": "Dunda — Payment Reconciliation",
+  "uid": "dunda-payment-reconciliation",
+  "description": "Driven by GET /internal/metrics/prometheus. See docs/runbooks/reconciliation-diff.md and docs/runbooks/stuck-payment.md.",
+  "schemaVersion": 39,
+  "time": { "from": "now-24h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Unreconciled confirmed payments (SLO: 0)",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 },
+      "targets": [
+        { "expr": "dunda_gauge{name=\"reconciliation_diff_count\"}", "refId": "A" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Payments moved to reconciliation (pending-age timeout, cumulative)",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 0 },
+      "targets": [
+        { "expr": "dunda_counter_total{name=\"payment_reconciliation_moved_total\"}", "refId": "A" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Currently-pending-past-threshold count",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 0 },
+      "targets": [
+        { "expr": "dunda_gauge{name=\"payment_pending_reconciliation_count\"}", "refId": "A" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Webhook duplicate delivery rate",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "targets": [
+        { "expr": "rate(dunda_counter_total{name=\"webhook_duplicate_total\"}[15m])", "refId": "A" }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Provider events endpoint traffic (route label is per-provider, e.g. /api/providers/mpesa/events — not templated by RequestMetrics.normalize_route/1)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "targets": [
+        { "expr": "sum(rate(dunda_requests_total{route=~\"/api/providers/.*/events\"}[5m])) by (route, status)", "legendFormat": "{{route}} {{status}}", "refId": "A" }
+      ]
+    }
+  ]
+}

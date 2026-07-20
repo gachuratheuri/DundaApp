@@ -129,7 +129,7 @@ defmodule Dunda.Checkout do
         pool = pool_for_quote!(quote)
         {count, _} = Repo.update_all(from(p in InventoryPool, where: p.id == ^pool.id and p.capacity - p.reserved - p.sold >= ^quote.quantity), inc: [reserved: quote.quantity, version: 1])
         if count != 1, do: Repo.rollback(:inventory_unavailable)
-        intent = Repo.insert!(%PaymentIntent{} |> PaymentIntent.changeset(%{quote_id: quote.id, user_id: user_id, event_id: quote.event_id, ticket_tier_id: quote.ticket_tier_id, quantity: quote.quantity, amount_cents: quote.total_cents, currency: quote.currency, phone: phone, idempotency_key: key, state: "inventory_reserved", expires_at: DateTime.add(now, @reservation_ttl, :second), version: 1}))
+        intent = Repo.insert!(%PaymentIntent{} |> PaymentIntent.changeset(%{quote_id: quote.id, user_id: user_id, event_id: quote.event_id, ticket_tier_id: quote.ticket_tier_id, quantity: quote.quantity, amount_cents: quote.total_cents, currency: quote.currency, phone_encrypted: phone, idempotency_key: key, state: "inventory_reserved", expires_at: DateTime.add(now, @reservation_ttl, :second), version: 1}))
         record_transition!(intent, "created", "inventory_reserved", 1, "reservation_created", %{})
         line = Repo.insert!(%PaymentLineItem{} |> PaymentLineItem.changeset(%{payment_intent_id: intent.id, line_number: 1, ticket_tier_id: quote.ticket_tier_id, quantity: quote.quantity, unit_price_cents: quote.unit_price_cents, currency: quote.currency, price_version: quote.price_version}))
         Repo.insert!(%InventoryReservation{} |> InventoryReservation.changeset(%{payment_intent_id: intent.id, inventory_pool_id: pool.id, quantity: quote.quantity, status: "active", expires_at: DateTime.add(now, @reservation_ttl, :second)}))
@@ -156,8 +156,15 @@ defmodule Dunda.Checkout do
     provider = Map.get(safe, :provider) || Map.get(safe, "provider")
     event_id = Map.get(safe, :provider_event_id) || Map.get(safe, "provider_event_id")
     case Repo.insert(%ProviderEvent{} |> ProviderEvent.changeset(safe), on_conflict: :nothing, conflict_target: [:provider, :provider_event_id]) do
-      {:ok, %ProviderEvent{id: nil}} -> Repo.get_by(ProviderEvent, provider: provider, provider_event_id: event_id)
-      result -> result
+      {:ok, %ProviderEvent{id: nil}} ->
+        # The unique conflict fired, so this provider event was already
+        # durably recorded — a real duplicate delivery, not a reimplemented
+        # heuristic (Phase 12 business-invariant metric).
+        Dunda.Observability.increment(:webhook_duplicate_total)
+        Repo.get_by(ProviderEvent, provider: provider, provider_event_id: event_id)
+
+      result ->
+        result
     end
   end
 
@@ -171,7 +178,13 @@ defmodule Dunda.Checkout do
   def fail_payment(intent_id, reason) do
     Repo.transaction(fn ->
       intent = Repo.one(from p in PaymentIntent, where: p.id == ^intent_id, lock: "FOR UPDATE") || Repo.rollback(:payment_intent_not_found)
-      if intent.state in ["fulfilled", "refunded"], do: intent, else:
+      # A reordered/stale provider failure can arrive after the intent has
+      # already confirmed (or moved further). Once "failed" is no longer a
+      # legal transition from the current state, this must no-op rather than
+      # attempt an invalid changeset — Repo.update!/release_reservation!
+      # would otherwise raise and crash the caller (Invariant 8: terminal /
+      # already-progressed states are not overwritten by a stale event).
+      if not PaymentIntent.transition_allowed?(intent.state, "failed"), do: intent, else:
         case Repo.one(from r in InventoryReservation, where: r.payment_intent_id == ^intent.id and r.status == "active", lock: "FOR UPDATE") do
           nil ->
             updated = Repo.update!(PaymentIntent.changeset(intent, %{state: "failed", failure_reason: to_string(reason), version: intent.version + 1}))
@@ -202,7 +215,7 @@ defmodule Dunda.Checkout do
     cond do
       not is_binary(receipt) or not is_binary(checkout_id) -> Repo.rollback(:provider_correlation_missing)
       amount != intent.amount_cents -> Repo.rollback(:provider_amount_mismatch)
-      is_binary(provider_phone) and normalise_phone(provider_phone) != intent.phone -> Repo.rollback(:provider_phone_mismatch)
+      is_binary(provider_phone) and normalise_phone(provider_phone) != intent.phone_encrypted -> Repo.rollback(:provider_phone_mismatch)
       is_binary(merchant_reference) and merchant_reference not in ["intent_#{intent.id}", intent.idempotency_key] -> Repo.rollback(:provider_merchant_mismatch)
       intent.provider_checkout_id && intent.provider_checkout_id != checkout_id -> Repo.rollback(:provider_checkout_mismatch)
       true ->

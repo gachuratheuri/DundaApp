@@ -64,7 +64,22 @@ defmodule Dunda.MixProject do
       {:bandit, "~> 1.5"},
       {:plug, "~> 1.16"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
+
+      # Phase 12 verification: property-based tests on the inventory/ledger/
+      # payment-intent invariants, and API-contract tests against the
+      # OpenAPI spec (`priv/openapi/dunda.yaml`).
+      {:stream_data, "~> 1.1", only: [:dev, :test]},
+      {:ex_json_schema, "~> 0.10", only: :test},
+
+      # Phase 12 observability: distributed tracing across HTTP/Ecto, with an
+      # OTLP exporter that no-ops without OTEL_EXPORTER_OTLP_ENDPOINT set
+      # (dev/test are silent by default; see Dunda.Application.start/2).
+      {:opentelemetry_api, "~> 1.4"},
+      {:opentelemetry, "~> 1.5"},
+      {:opentelemetry_exporter, "~> 1.8"},
+      {:opentelemetry_phoenix, "~> 2.0"},
+      {:opentelemetry_ecto, "~> 1.2"}
     ]
   end
 

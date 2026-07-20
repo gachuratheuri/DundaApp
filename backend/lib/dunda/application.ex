@@ -3,6 +3,18 @@ defmodule Dunda.Application do
 
   @impl true
   def start(_type, _args) do
+    # Installed before any child starts so every subsequent log line —
+    # including boot-time logs from the children below — passes through the
+    # redaction filter (Phase 11 log-redaction hardening).
+    :ok = Dunda.Logging.Redactor.install()
+
+    # OpenTelemetry auto-instrumentation (Phase 12 observability). No-op
+    # exporter unless OTEL_EXPORTER_OTLP_ENDPOINT is set (config/runtime.exs,
+    # prod only) — safe to call unconditionally in every environment.
+    OpentelemetryPhoenix.setup(adapter: :bandit)
+    OpentelemetryEcto.setup([:dunda, :repo])
+    OpentelemetryEcto.setup([:dunda, :read_repo])
+
     topologies = [
       k8s: [
         strategy: Cluster.Strategy.Kubernetes.DNS,

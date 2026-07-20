@@ -4,6 +4,13 @@ defmodule Dunda.Workers.InventoryReconciliationWorker do
   alias Dunda.Checkout
   @impl Oban.Worker
   def perform(%Oban.Job{}) do
-    if Dunda.Containment.blocked?(:checkout), do: {:cancel, :phase_0_containment}, else: Checkout.reconcile_redis_projection()
+    if Dunda.Containment.blocked?(:checkout) do
+      {:cancel, :phase_0_containment}
+    else
+      case Checkout.reconcile_redis_projection() do
+        :ok -> :ok
+        {:error, _reason} = error -> Dunda.Observability.increment(:inventory_reconciliation_failed_total); error
+      end
+    end
   end
 end

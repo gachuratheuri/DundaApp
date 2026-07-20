@@ -108,3 +108,23 @@ device-bound Ed25519 proofs and a venue-local coordinator model. Credential and
 scanner routes remain containment-blocked until cross-language, replay,
 transfer, revocation, clock-drift, and partition evidence passes. See
 `docs/phase_7_ticket_security.md`.
+Phase 11 completes the data-governance program: a verified data inventory and
+DPIA, encryption of the remaining plaintext checkout contact fields, a real
+key-rotation mechanism, log redaction, all five DSR rights with deadline
+monitoring, and consent records. See `docs/phase_11_privacy_governance.md`.
+Phase 12 adds the property-based/contract/fault-injection/migration/mutation/
+performance test hierarchy, a real Prometheus scrape endpoint with
+business-invariant metrics, dashboards, alerts, and runbooks, and extends
+release governance to the full five-stakeholder set. It also documents,
+rather than hides, what it found while writing that test suite: a Critical
+defect (no code path provisioned inventory for a newly created event, so the
+Phase 3–5 checkout authority did not function end-to-end — now fixed, see
+`test/dunda/events_inventory_pool_test.exs`) and a High one, still open,
+in organiser-portal authorization (`Dunda.Organisations.member?/3` is a real,
+working role check, but it gates exactly one action — editing an existing
+event — and nothing else; portal entry itself and every other mutating
+action are not role-gated). **Exit gate G12 is not met** — see
+`docs/phase_12_verification_observability_rollout.md` for the full findings
+table and evidence linkage. This repository has not been compiled or run in
+the environment that authored these two phases; run the commands in that
+document's § Verification before relying on any of it.

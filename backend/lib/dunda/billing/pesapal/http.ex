@@ -151,7 +151,7 @@ defmodule Dunda.Billing.Pesapal.HTTP do
   end
 
   defp log_and_return(path, status, body) do
-    Logger.warning("[Pesapal] #{path} returned #{status}: #{inspect(body)}")
+    Logger.warning("[Pesapal] #{path} returned #{status}: #{inspect(Dunda.Logging.Redactor.redact(body))}")
     {:error, {:http_status, status, body}}
   end
 

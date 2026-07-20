@@ -1,0 +1,36 @@
+{
+  "title": "Dunda — Scanner Admissions",
+  "uid": "dunda-scanner-admissions",
+  "description": "Driven by GET /internal/metrics/prometheus. Known gap: Dunda.Ticketing (scanner_controller.ex, scanner_admission.ex) does not currently emit any Dunda.Observability counters/gauges (grep confirms zero call sites) — tracked in docs/phase_12_verification_observability_rollout.md's findings table. This dashboard only has request-level signal (traffic and error rate on the admission endpoint) until admission-domain metrics (admitted/duplicate/revoked counts) are added.",
+  "schemaVersion": 39,
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Admission request rate by status",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        { "expr": "sum(rate(dunda_requests_total{route=\"/api/scanner/admissions\"}[5m])) by (status)", "legendFormat": "{{status}}", "refId": "A" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Admission endpoint error rate",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 0 },
+      "targets": [
+        { "expr": "sum(rate(dunda_requests_5xx_total{route=\"/api/scanner/admissions\"}[5m])) / sum(rate(dunda_requests_total{route=\"/api/scanner/admissions\"}[5m]))", "refId": "A" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Manifest publish/fetch traffic",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        { "expr": "sum(rate(dunda_requests_total{route=~\"/api/scanner/manifests/.*\"}[5m])) by (route, status)", "legendFormat": "{{route}} {{status}}", "refId": "A" }
+      ]
+    }
+  ]
+}

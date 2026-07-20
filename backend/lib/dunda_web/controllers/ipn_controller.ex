@@ -24,6 +24,7 @@ defmodule DundaWeb.IpnController do
     otid = params["OrderTrackingId"] || params["orderTrackingId"]
     ref = params["OrderMerchantReference"] || params["orderMerchantReference"]
     type = params["OrderNotificationType"] || params["orderNotificationType"]
+    Logger.metadata(order_tracking_id: otid, merchant_reference: ref)
 
     status =
       case otid do

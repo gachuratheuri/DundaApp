@@ -20,6 +20,20 @@ queries from `docs/phase_5_post_release_assurance.md`. Capture the output as
 release evidence and destroy the isolated instance according to the retention
 policy.
 
+Additionally, before the drill (or before a backup's retention window expires
+and it is deleted), capture a protected-row-count baseline and verify it
+after — this turns "quarterly restoration drills must demonstrate no
+statutory record loss" from a manual eyeball check into an automatable,
+exit-code-driven one (`backend/test/dunda/retention_test.exs` covers the same
+invariant at the application level; this covers it at the infrastructure
+backup/restore level):
+
+```text
+mix dunda.backup_retention_check --capture-baseline /tmp/baseline.json
+# ... perform the restore drill ...
+mix dunda.backup_retention_check --verify /tmp/baseline.json
+```
+
 ## Redis reconstruction
 
 Redis is disposable in production. After a Redis failover or data loss:

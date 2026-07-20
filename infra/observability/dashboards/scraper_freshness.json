@@ -1,0 +1,36 @@
+{
+  "title": "Dunda — Scraper Freshness",
+  "uid": "dunda-scraper-freshness",
+  "description": "Driven by GET /internal/metrics/prometheus. Counters are keyed {:scraper_empty_result, source} / {:scraper_schema_drift, source} (backend/lib/dunda/scraper/schema_guard.ex, backend/lib/dunda/workers/ingest_worker.ex) — rendered with an inspected-tuple `name` label (e.g. `{:scraper_empty_result, \"ticketsasa.com\"}`), hence the regex match below rather than an exact label. Cosmetic improvement (splitting into separate metric+source labels) tracked in the Phase 12 findings table, not blocking.",
+  "schemaVersion": 39,
+  "time": { "from": "now-24h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Scraper empty-result events by source",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        { "expr": "dunda_counter_total{name=~\".*scraper_empty_result.*\"}", "legendFormat": "{{name}}", "refId": "A" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Scraper schema-drift events by source",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        { "expr": "dunda_counter_total{name=~\".*scraper_schema_drift.*\"}", "legendFormat": "{{name}}", "refId": "A" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Scrape dispatch/fetch/ingest queue depth (Oban, aggregate)",
+      "type": "timeseries",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        { "expr": "dunda_oban_queue_depth", "refId": "A" }
+      ]
+    }
+  ]
+}

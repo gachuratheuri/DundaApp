@@ -22,6 +22,7 @@ defmodule DundaWeb.MpesaController do
     else
     stk = get_in(params, ["Body", "stkCallback"]) || %{}
     checkout_request_id = stk["CheckoutRequestID"]
+    Logger.metadata(checkout_request_id: checkout_request_id)
 
     normalised = %{
       "ResultCode" => to_string(stk["ResultCode"]),
@@ -36,7 +37,7 @@ defmodule DundaWeb.MpesaController do
         :noop
 
       other ->
-        Logger.warning("[Mpesa] Unroutable callback (#{inspect(other)}): #{inspect(stk)}")
+        Logger.warning("[Mpesa] Unroutable callback (#{inspect(other)}): #{inspect(Dunda.Logging.Redactor.redact(stk))}")
     end
 
     # Daraja expects this exact acknowledgement shape.

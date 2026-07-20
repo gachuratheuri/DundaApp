@@ -50,7 +50,10 @@ defmodule Dunda.Workers.MpesaPoller do
     case Daraja.query_status(checkout_request_id) do
       {:ok, %{"ResultCode" => "0"} = result} ->
         receipt = result["MpesaReceiptNumber"]
-        Logger.info("[MpesaPoller] Transaction #{tx["transaction_id"]} settled successfully via poller. Receipt: #{receipt}")
+        # Log a correlation-safe fingerprint, never the raw receipt number
+        # (Phase 11 log-redaction hardening).
+        receipt_fingerprint = :crypto.hash(:sha256, receipt || "") |> Base.encode16(case: :lower) |> String.slice(0, 12)
+        Logger.info("[MpesaPoller] Transaction #{tx["transaction_id"]} settled successfully via poller. Receipt fingerprint: #{receipt_fingerprint}")
 
         Ledger.settle(tx["transaction_id"], receipt)
         Dunda.Workers.MpesaFulfillmentWorker.enqueue(

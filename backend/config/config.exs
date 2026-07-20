@@ -42,7 +42,10 @@ config :dunda, Oban,
       {"*/1 * * * *", Dunda.Workers.ReservationExpiryWorker},
       {"*/5 * * * *", Dunda.Workers.InventoryReconciliationWorker},
       {"*/5 * * * *", Dunda.Workers.PaymentReconciliationWorker},
-      {"0 * * * *", Dunda.Workers.FinancialReconciliationWorker}
+      {"0 * * * *", Dunda.Workers.FinancialReconciliationWorker},
+      # DSR deadlines run regardless of Phase 0 containment — see the
+      # worker moduledoc. Hourly is well inside the 5-day due-soon window.
+      {"0 * * * *", Dunda.Workers.DsrDeadlineWorker}
     ]}
   ],
   queues: [
@@ -51,12 +54,20 @@ config :dunda, Oban,
     scrape_fetch: 4,
     scrape_ingest: 10,
     payments: 3,
-    inventory: 2
+    inventory: 2,
+    compliance: 1
   ]
 
 # JSON library used by Ecto/Phoenix-style serialisation.
 config :dunda, :json_library, Jason
 config :phoenix, :json_library, Jason
+
+# ── OpenTelemetry (Phase 12 observability) ────────────────────────────────────
+# No-op exporter by default (dev/test, and prod unless an OTLP endpoint is
+# configured) — config/runtime.exs enables the real OTLP exporter only when
+# OTEL_EXPORTER_OTLP_ENDPOINT is set in the deploy environment, so this never
+# attempts network I/O in this sandbox or in CI.
+config :opentelemetry, traces_exporter: :none
 
 # HTTP API endpoint (JSON for the mobile app + a small HTML/LiveView organiser portal).
 config :dunda, DundaWeb.Endpoint,

@@ -13,7 +13,7 @@ defmodule Dunda.Phase3To5CheckoutTest do
   end
 
   test "payment state machine rejects backward terminal transitions" do
-    intent = %PaymentIntent{state: "fulfilled", quote_id: Ecto.UUID.generate(), user_id: 1, event_id: 1, quantity: 1, amount_cents: 100, currency: "KES", phone: "254712345678", idempotency_key: String.duplicate("x", 16), expires_at: DateTime.utc_now(), version: 1}
+    intent = %PaymentIntent{state: "fulfilled", quote_id: Ecto.UUID.generate(), user_id: 1, event_id: 1, quantity: 1, amount_cents: 100, currency: "KES", phone_encrypted: "254712345678", idempotency_key: String.duplicate("x", 16), expires_at: DateTime.utc_now(), version: 1}
     refute PaymentIntent.changeset(intent, %{state: "provider_pending", version: 2}).valid?
     assert PaymentIntent.changeset(intent, %{state: "manual_review", version: 2}).valid?
   end

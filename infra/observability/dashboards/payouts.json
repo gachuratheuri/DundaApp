@@ -1,0 +1,36 @@
+{
+  "title": "Dunda — Payouts",
+  "uid": "dunda-payouts",
+  "description": "Driven by GET /internal/metrics/prometheus. See docs/runbooks/payout-stuck.md. Known gap: no direct PayoutBatch age gauge exists yet (docs/phase_12_verification_observability_rollout.md findings table) — this dashboard uses the payment-side pending-reconciliation signal as an interim proxy and the B2C result endpoint's request volume as a liveness check.",
+  "schemaVersion": 39,
+  "time": { "from": "now-24h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Payments pending past reconciliation threshold (proxy signal)",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 },
+      "targets": [
+        { "expr": "dunda_gauge{name=\"payment_pending_reconciliation_count\"}", "refId": "A" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "B2C payout result callback traffic",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 16, "x": 8, "y": 0 },
+      "targets": [
+        { "expr": "sum(rate(dunda_requests_total{route=\"/api/mpesa/b2c/result\"}[15m])) by (status)", "legendFormat": "{{status}}", "refId": "A" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Oban queue depth (payments queue carries payout jobs)",
+      "type": "timeseries",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 6 },
+      "targets": [
+        { "expr": "dunda_oban_queue_depth", "refId": "A" }
+      ]
+    }
+  ]
+}

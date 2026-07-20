@@ -21,13 +21,13 @@ defmodule Dunda.Workers.PaymentSubmissionWorker do
   defp submit(intent, attempt) do
     case Application.get_env(:dunda, :checkout_provider, :pesapal) do
       :mpesa ->
-        case Daraja.stk_push(intent.phone, div(intent.amount_cents, 100), intent.idempotency_key) do
+        case Daraja.stk_push(intent.phone_encrypted, div(intent.amount_cents, 100), intent.idempotency_key) do
           {:ok, checkout_id} -> normalise(Checkout.complete_provider_submission(intent.id, attempt.id, %{result: :ok, provider_checkout_id: checkout_id}))
           {:error, :pending} -> normalise(Checkout.complete_provider_submission(intent.id, attempt.id, %{result: :ambiguous, reason: :provider_pending}))
           {:error, reason} -> normalise(Checkout.complete_provider_submission(intent.id, attempt.id, %{result: :failed, reason: reason}))
         end
       _ ->
-        case Pesapal.submit_order(%{merchant_reference: "intent_#{intent.id}", amount_cents: intent.amount_cents, currency: intent.currency, phone: intent.phone, description: "Dunda checkout"}) do
+        case Pesapal.submit_order(%{merchant_reference: "intent_#{intent.id}", amount_cents: intent.amount_cents, currency: intent.currency, phone: intent.phone_encrypted, description: "Dunda checkout"}) do
           {:ok, %{order_tracking_id: checkout_id, redirect_url: redirect_url}} -> normalise(Checkout.complete_provider_submission(intent.id, attempt.id, %{result: :ok, provider_checkout_id: checkout_id, redirect_url: redirect_url}))
           {:error, reason} -> normalise(Checkout.complete_provider_submission(intent.id, attempt.id, %{result: :ambiguous, reason: reason}))
         end

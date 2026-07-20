@@ -6,7 +6,7 @@ defmodule Dunda.Accounts do
   """
   import Ecto.Query, only: [from: 2]
 
-  alias Dunda.Accounts.User
+  alias Dunda.Accounts.{Consent, User}
   alias Dunda.Repo
 
   @spec get_user(integer() | String.t()) :: User.t() | nil
@@ -69,4 +69,75 @@ defmodule Dunda.Accounts do
     %User{} |> User.oauth_changeset(attrs) |> Repo.insert()
   end
 
+  @doc """
+  Records a versioned consent grant for `purpose` (e.g.
+  `"marketing_notifications"`). Revokes any prior active grant for the same
+  `(user_id, purpose)` first — `consents_one_active_grant_per_purpose`
+  enforces at most one active grant, but re-consent after a policy-version
+  change is a new row, not a mutation of the old one, so the history is
+  preserved.
+  """
+  @spec record_consent(integer(), String.t(), String.t()) ::
+          {:ok, Consent.t()} | {:error, Ecto.Changeset.t()}
+  def record_consent(user_id, purpose, version) do
+    Repo.transaction(fn ->
+      _ = revoke_active_consent(user_id, purpose)
+
+      case %Consent{}
+           |> Consent.changeset(%{
+             user_id: user_id,
+             purpose: purpose,
+             version: version,
+             granted_at: DateTime.utc_now() |> DateTime.truncate(:second)
+           })
+           |> Repo.insert() do
+        {:ok, consent} ->
+          _ = Dunda.Audit.record(%{actor_user_id: user_id, action: "privacy.consent_granted", resource_type: "consent", resource_id: consent.id, metadata: %{purpose: purpose, version: version}})
+          consent
+
+        {:error, changeset} ->
+          Repo.rollback(changeset)
+      end
+    end)
+  end
+
+  @doc "Revokes the active consent grant for `(user_id, purpose)`, if any."
+  @spec revoke_consent(integer(), String.t()) :: {:ok, Consent.t() | nil} | {:error, Ecto.Changeset.t()}
+  def revoke_consent(user_id, purpose) do
+    case revoke_active_consent(user_id, purpose) do
+      {:ok, nil} = result ->
+        result
+
+      {:ok, consent} = result ->
+        _ = Dunda.Audit.record(%{actor_user_id: user_id, action: "privacy.consent_revoked", resource_type: "consent", resource_id: consent.id, metadata: %{purpose: purpose}})
+        result
+
+      {:error, _changeset} = error ->
+        error
+    end
+  end
+
+  @doc "Whether `user_id` currently has an active (granted, not revoked) consent for `purpose`."
+  @spec active_consent?(integer(), String.t()) :: boolean()
+  def active_consent?(user_id, purpose) do
+    Repo.exists?(
+      from c in Consent,
+        where: c.user_id == ^user_id and c.purpose == ^purpose and is_nil(c.revoked_at)
+    )
+  end
+
+  defp revoke_active_consent(user_id, purpose) do
+    case Repo.one(
+           from c in Consent,
+             where: c.user_id == ^user_id and c.purpose == ^purpose and is_nil(c.revoked_at)
+         ) do
+      nil ->
+        {:ok, nil}
+
+      consent ->
+        consent
+        |> Consent.changeset(%{revoked_at: DateTime.utc_now() |> DateTime.truncate(:second)})
+        |> Repo.update()
+    end
+  end
 end

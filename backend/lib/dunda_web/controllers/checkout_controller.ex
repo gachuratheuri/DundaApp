@@ -15,7 +15,11 @@ defmodule DundaWeb.CheckoutController do
       key = List.first(get_req_header(conn, "idempotency-key")) || params["idempotency_key"]
       attrs = Map.put(params, "idempotency_key", key)
       case Checkout.create_payment_intent(conn.assigns.current_user.id, attrs) do
-        {:ok, intent} -> conn |> put_status(:accepted) |> json(%{data: %{payment_intent_id: intent.id, state: intent.state, amount_cents: intent.amount_cents, currency: intent.currency, redirect_url: intent.redirect_url}})
+        {:ok, intent} ->
+          # Correlation metadata for every subsequent log line in this
+          # request process (Phase 11/12 observability — request tracing).
+          Logger.metadata(payment_intent_id: intent.id)
+          conn |> put_status(:accepted) |> json(%{data: %{payment_intent_id: intent.id, state: intent.state, amount_cents: intent.amount_cents, currency: intent.currency, redirect_url: intent.redirect_url}})
         {:error, reason} -> error(conn, reason)
       end
   end
@@ -23,7 +27,9 @@ defmodule DundaWeb.CheckoutController do
   def status(conn, %{"id" => id}) do
     case Checkout.get_payment_intent_for_user(id, conn.assigns.current_user.id) do
       nil -> error(conn, :payment_intent_not_found)
-      intent -> json(conn, %{data: %{payment_intent_id: intent.id, state: intent.state, amount_cents: intent.amount_cents, currency: intent.currency, provider_checkout_id: intent.provider_checkout_id}})
+      intent ->
+        Logger.metadata(payment_intent_id: intent.id)
+        json(conn, %{data: %{payment_intent_id: intent.id, state: intent.state, amount_cents: intent.amount_cents, currency: intent.currency, provider_checkout_id: intent.provider_checkout_id}})
     end
   end
 

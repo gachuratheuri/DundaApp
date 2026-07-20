@@ -183,7 +183,7 @@ defmodule Dunda.Payments.Daraja.HTTP do
         {:ok, body}
 
       {:ok, %{status: status, body: body}} ->
-        Logger.warning("[Daraja] #{path} returned #{status}: #{inspect(body)}")
+        Logger.warning("[Daraja] #{path} returned #{status}: #{inspect(Dunda.Logging.Redactor.redact(body))}")
         {:ok, body}
 
       {:error, reason} ->

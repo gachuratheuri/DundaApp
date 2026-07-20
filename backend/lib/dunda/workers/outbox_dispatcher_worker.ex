@@ -5,6 +5,8 @@ defmodule Dunda.Workers.OutboxDispatcherWorker do
   alias Dunda.Checkout.OutboxEvent
   alias Dunda.Repo
 
+  require OpenTelemetry.Tracer
+
   @impl Oban.Worker
   def perform(%Oban.Job{}) do
     if Dunda.Containment.blocked?(:checkout) do
@@ -13,9 +15,20 @@ defmodule Dunda.Workers.OutboxDispatcherWorker do
       now = DateTime.utc_now() |> DateTime.truncate(:second)
       Repo.transaction(fn ->
         events = Repo.all(from e in OutboxEvent, where: e.status == "pending" and e.available_at <= ^now, order_by: [asc: e.inserted_at], limit: 100, lock: "FOR UPDATE SKIP LOCKED")
-        Enum.each(events, fn event -> dispatch(event, now) end)
+        Enum.each(events, fn event -> dispatch_traced(event, now) end)
       end)
       :ok
+    end
+  end
+
+  # Manual span (Phase 12 observability): no maintained OpenTelemetry
+  # auto-instrumentation exists for Oban, so the durable-intent-to-dispatch
+  # boundary (Invariant 9) is traced explicitly here rather than left dark.
+  defp dispatch_traced(%OutboxEvent{} = event, now) do
+    OpenTelemetry.Tracer.with_span "outbox.dispatch", %{
+      attributes: %{"outbox.event_type" => event.event_type, "outbox.aggregate_id" => to_string(event.aggregate_id)}
+    } do
+      dispatch(event, now)
     end
   end
 

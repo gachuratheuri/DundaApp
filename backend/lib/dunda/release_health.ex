@@ -10,13 +10,24 @@ defmodule Dunda.ReleaseHealth do
   @default_error_rate 0.01
   @default_average_latency_us 500_000
 
+  # Root-plan literal numeric SLOs (Phase 12 § Proposed measurable SLOs).
+  # "Reservation" and "checkout creation" are the same HTTP call in this
+  # system (POST /api/checkout performs the reservation transaction inline —
+  # see Dunda.Checkout.create_payment_intent/2), so both named SLOs are
+  # evaluated against the same route's histogram.
+  @checkout_route "/api/checkout"
+  @checkout_p95_max_ms 300
+  @reservation_p99_max_ms 150
+  @webhook_ack_max_ms 2_000
+
   @type report :: %{
           healthy: boolean(),
           requests: non_neg_integer(),
           errors_5xx: non_neg_integer(),
           error_rate: float(),
           average_latency_us: non_neg_integer() | nil,
-          thresholds: %{error_rate_max: float(), average_latency_us_max: non_neg_integer()}
+          thresholds: %{error_rate_max: float(), average_latency_us_max: non_neg_integer()},
+          endpoint_slo: map()
         }
 
   @spec evaluate() :: report()
@@ -27,21 +38,55 @@ defmodule Dunda.ReleaseHealth do
     error_rate = if requests == 0, do: 0.0, else: errors_5xx / requests
     average_latency_us = if duration_count == 0, do: nil, else: div(duration_us, duration_count)
     thresholds = thresholds()
+    endpoint_slo = endpoint_slo(counters)
 
     %{
       healthy:
         error_rate <= thresholds.error_rate_max and
-          (is_nil(average_latency_us) or average_latency_us <= thresholds.average_latency_us_max),
+          (is_nil(average_latency_us) or average_latency_us <= thresholds.average_latency_us_max) and
+          endpoint_slo.checkout_p95_ok and endpoint_slo.reservation_p99_ok and endpoint_slo.webhook_ack_ok,
       requests: requests,
       errors_5xx: errors_5xx,
       error_rate: Float.round(error_rate, 6),
       average_latency_us: average_latency_us,
-      thresholds: thresholds
+      thresholds: thresholds,
+      endpoint_slo: endpoint_slo
     }
   rescue
     _ ->
-      %{healthy: false, requests: 0, errors_5xx: 0, error_rate: 1.0, average_latency_us: nil, thresholds: thresholds()}
+      %{healthy: false, requests: 0, errors_5xx: 0, error_rate: 1.0, average_latency_us: nil, thresholds: thresholds(), endpoint_slo: default_endpoint_slo()}
   end
+
+  defp endpoint_slo(counters) do
+    checkout_p95 = Dunda.Observability.latency_percentile(counters, @checkout_route, 95)
+    reservation_p99 = Dunda.Observability.latency_percentile(counters, @checkout_route, 99)
+    webhook_ack_ms = Map.get(counters, {:gauge, :webhook_ack_ms_last})
+
+    %{
+      checkout_p95_ms: checkout_p95,
+      checkout_p95_max_ms: @checkout_p95_max_ms,
+      checkout_p95_ok: within_ms?(checkout_p95, @checkout_p95_max_ms),
+      reservation_p99_ms: reservation_p99,
+      reservation_p99_max_ms: @reservation_p99_max_ms,
+      reservation_p99_ok: within_ms?(reservation_p99, @reservation_p99_max_ms),
+      webhook_ack_ms: webhook_ack_ms,
+      webhook_ack_max_ms: @webhook_ack_max_ms,
+      webhook_ack_ok: within_ms?(webhook_ack_ms, @webhook_ack_max_ms)
+    }
+  end
+
+  defp default_endpoint_slo do
+    %{
+      checkout_p95_ms: nil, checkout_p95_max_ms: @checkout_p95_max_ms, checkout_p95_ok: true,
+      reservation_p99_ms: nil, reservation_p99_max_ms: @reservation_p99_max_ms, reservation_p99_ok: true,
+      webhook_ack_ms: nil, webhook_ack_max_ms: @webhook_ack_max_ms, webhook_ack_ok: true
+    }
+  end
+
+  # No samples yet is not a breach — an idle endpoint isn't an unhealthy one.
+  defp within_ms?(nil, _max), do: true
+  defp within_ms?(:infinity, _max), do: false
+  defp within_ms?(value, max) when is_number(value), do: value <= max
 
   @spec thresholds() :: %{error_rate_max: float(), average_latency_us_max: non_neg_integer()}
   def thresholds do

@@ -72,17 +72,48 @@ if config_env() == :prod do
     pool_size: 40,
     after_connect: {Postgrex, :query!, ["SET default_transaction_read_only = on", []]}
 
-  config :dunda, Dunda.Vault,
-    ciphers: [
-      default: {Cloak.Ciphers.AES.GCM, tag: "AES.GCM.V1",
-                key: Base.decode64!(System.fetch_env!("ENCRYPTION_KEY")),
-                iv_length: 12}
-    ]
+  # Key material is resolved through a `Dunda.Vault.KeyProvider` adapter, not
+  # `System.fetch_env!/1` directly (Phase 11 key-management hardening) — see
+  # `docs/phase_11_privacy_governance.md` § Key management. The default
+  # adapter still reads environment variables; the seam lets a real KMS
+  # adapter replace it with no call-site change.
+  vault_key_provider = Application.get_env(:dunda, :vault_key_provider, Dunda.Vault.KeyProvider.Env)
+
+  encryption_key = Dunda.Vault.KeyProvider.fetch_key!(vault_key_provider, :encryption_key)
+  blind_index_key = Dunda.Vault.KeyProvider.fetch_key!(vault_key_provider, :blind_index_key)
+
+  # Optional rotation-grace-window key material. When present, the PREVIOUS
+  # key remains valid for decrypt-only until `mix dunda.rotate_keys
+  # --reencrypt` re-encrypts every row under the new key, at which point the
+  # operator removes `ENCRYPTION_KEY_PREVIOUS`. The blind index has no
+  # equivalent "previous" cipher: `mix dunda.rotate_keys --blind-index`
+  # recomputes every hash directly from the independently-encrypted
+  # plaintext (`User.phone_msisdn`), so rotating `BLIND_INDEX_KEY` never
+  # needs the old secret at all — see `Dunda.Vault.Rotation` moduledoc.
+  encryption_key_previous = Dunda.Vault.KeyProvider.fetch_key_optional(vault_key_provider, :encryption_key_previous)
+
+  # The cipher tag encodes an explicit generation number, NOT "is a rotation
+  # in progress" — the tag must always match what is actually persisted, so
+  # steady state (no `_PREVIOUS` configured) still has to know which
+  # generation the current key is. `ENCRYPTION_KEY_VERSION` defaults to 1,
+  # matching every deployment before this rotation mechanism existed, and is
+  # bumped by the operator as part of the `mix dunda.rotate_keys` runbook
+  # (`docs/phase_11_privacy_governance.md` § Key rotation) — never inferred.
+  key_version = String.to_integer(System.get_env("ENCRYPTION_KEY_VERSION", "1"))
+
+  vault_ciphers =
+    [default: {Cloak.Ciphers.AES.GCM, tag: "AES.GCM.V#{key_version}", key: encryption_key, iv_length: 12}] ++
+      if encryption_key_previous do
+        [previous: {Cloak.Ciphers.AES.GCM, tag: "AES.GCM.V#{key_version - 1}", key: encryption_key_previous, iv_length: 12}]
+      else
+        []
+      end
+
+  config :dunda, Dunda.Vault, ciphers: vault_ciphers
 
   # Deterministic blind-index key — MUST be distinct from ENCRYPTION_KEY.
-  config :dunda, Dunda.Hashed.HMAC,
-    algorithm: :sha256,
-    secret: Base.decode64!(System.fetch_env!("BLIND_INDEX_KEY"))
+  config :dunda, Dunda.Hashed.HMAC, algorithm: :sha256, secret: blind_index_key
+  config :dunda, :vault_key_provider, vault_key_provider
 
   # Safaricom Daraja 3.0 production credentials (consumer STK push + B2C payouts).
   config :dunda, :daraja,
@@ -109,4 +140,17 @@ if config_env() == :prod do
     ipn_url: System.fetch_env!("PESAPAL_IPN_URL"),
     ipn_id: System.get_env("PESAPAL_IPN_ID"),
     callback_url: System.fetch_env!("PESAPAL_CALLBACK_URL")
+
+  # OpenTelemetry OTLP exporter — enabled only when an endpoint is actually
+  # configured; otherwise stays the no-op exporter from config/config.exs.
+  # Traces carry payment_intent_id/tenant_id attributes at the span level
+  # where those Logger.metadata keys are already set (Phase 11 §11.4).
+  case System.get_env("OTEL_EXPORTER_OTLP_ENDPOINT") do
+    endpoint when is_binary(endpoint) and endpoint != "" ->
+      config :opentelemetry, traces_exporter: :otlp
+      config :opentelemetry_exporter, otlp_protocol: :http_protobuf, otlp_endpoint: endpoint
+
+    _ ->
+      :ok
+  end
 end

@@ -163,7 +163,7 @@ defmodule Dunda.Market do
           amount_cents: listing.asking_price_kes * 100,
           currency: event.currency || "KES",
           quantity: 1,
-          phone: phone,
+          phone_encrypted: phone,
           event_id: event.id,
           organisation_id: event.organisation_id,
           user_id: buyer_id,

@@ -1,0 +1,198 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Dunda API",
+    "version": "1.0.0",
+    "description": "JSON API contract for the Dunda ticketing platform. This is the authoritative source for Dunda.PhoenixWeb.contract tests (backend/test/support/contract_case.ex) — a response that doesn't match its schema here is a contract break, not just an implementation detail. Serialized as JSON rather than YAML so it can be parsed with the already-present `jason` dependency, avoiding an extra untested YAML parser dependency."
+  },
+  "paths": {
+    "/healthz": { "get": { "operationId": "healthz", "responses": { "200": { "$ref": "#/components/responses/Health" } } } },
+    "/api/events": { "get": { "operationId": "listEvents", "responses": { "200": { "$ref": "#/components/responses/EventList" } } } },
+    "/api/events/{id}": { "get": { "operationId": "showEvent", "responses": { "200": { "$ref": "#/components/responses/EventShow" }, "404": { "$ref": "#/components/responses/Error" } } } },
+    "/api/quotes": { "post": { "operationId": "createQuote", "responses": { "200": { "$ref": "#/components/responses/Quote" }, "422": { "$ref": "#/components/responses/Error" } } } },
+    "/api/checkout": { "post": { "operationId": "createCheckout", "responses": { "202": { "$ref": "#/components/responses/PaymentIntent" }, "422": { "$ref": "#/components/responses/Error" } } } },
+    "/api/checkout/{id}/status": { "get": { "operationId": "checkoutStatus", "responses": { "200": { "$ref": "#/components/responses/PaymentIntent" }, "404": { "$ref": "#/components/responses/Error" } } } },
+    "/api/tickets": { "get": { "operationId": "listTickets", "responses": { "200": { "$ref": "#/components/responses/TicketList" } } } },
+    "/api/privacy/requests": { "post": { "operationId": "createPrivacyRequest", "responses": { "202": { "$ref": "#/components/responses/DsrRequest" }, "422": { "$ref": "#/components/responses/Error" } } } },
+    "/api/privacy/requests/{id}": { "patch": { "operationId": "updatePrivacyRequest", "responses": { "200": { "$ref": "#/components/responses/DsrRequestUpdate" }, "404": { "$ref": "#/components/responses/Error" }, "422": { "$ref": "#/components/responses/Error" } } } },
+    "/api/privacy/export": { "get": { "operationId": "exportPrivacy", "responses": { "200": { "$ref": "#/components/responses/PrivacyExport" } } } }
+  },
+  "components": {
+    "responses": {
+      "Health": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Health" } } } },
+      "EventList": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EventListEnvelope" } } } },
+      "EventShow": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EventEnvelope" } } } },
+      "Quote": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/QuoteEnvelope" } } } },
+      "PaymentIntent": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PaymentIntentEnvelope" } } } },
+      "TicketList": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TicketListEnvelope" } } } },
+      "DsrRequest": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DsrRequestEnvelope" } } } },
+      "DsrRequestUpdate": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DsrRequestUpdateEnvelope" } } } },
+      "PrivacyExport": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PrivacyExportEnvelope" } } } },
+      "Error": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } } }
+    },
+    "schemas": {
+      "Health": {
+        "type": "object",
+        "required": ["status"],
+        "properties": { "status": { "type": "string" } }
+      },
+      "Event": {
+        "type": "object",
+        "description": "Matches DundaWeb.EventJSON.data/1 exactly — note `id` is a string and the price field is `price_kes` (denominated in cents despite the name; see that module's field-name caveat), not `price_cents`/`currency`/`status`, which this envelope does not expose.",
+        "required": ["id", "name", "venue", "starts_at", "price_kes", "remaining", "sold_out", "capacity"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "venue": { "type": "string" },
+          "starts_at": { "type": "string" },
+          "price_kes": { "type": "integer" },
+          "remaining": { "type": "integer" },
+          "sold_out": { "type": "boolean" },
+          "tier_label": { "type": "string" },
+          "is_vip": { "type": "boolean" },
+          "cover_uri": { "type": ["string", "null"] },
+          "genre_tag": { "type": ["string", "null"] },
+          "description": { "type": ["string", "null"] },
+          "capacity": { "type": "integer" },
+          "tiers": { "type": ["array", "null"] }
+        }
+      },
+      "EventEnvelope": {
+        "type": "object",
+        "required": ["data"],
+        "properties": { "data": { "$ref": "#/components/schemas/Event" } }
+      },
+      "EventListEnvelope": {
+        "type": "object",
+        "required": ["data"],
+        "properties": {
+          "data": { "type": "array", "items": { "$ref": "#/components/schemas/Event" } },
+          "meta": { "type": "object" }
+        }
+      },
+      "Quote": {
+        "type": "object",
+        "required": ["quote_id", "quantity", "unit_price_cents", "total_cents", "currency", "expires_at"],
+        "properties": {
+          "quote_id": { "type": "string" },
+          "signature": { "type": "string" },
+          "quantity": { "type": "integer" },
+          "unit_price_cents": { "type": "integer" },
+          "total_cents": { "type": "integer" },
+          "currency": { "type": "string" },
+          "expires_at": { "type": "string" }
+        }
+      },
+      "QuoteEnvelope": {
+        "type": "object",
+        "required": ["data"],
+        "properties": { "data": { "$ref": "#/components/schemas/Quote" } }
+      },
+      "PaymentIntent": {
+        "type": "object",
+        "required": ["payment_intent_id", "state", "amount_cents", "currency"],
+        "properties": {
+          "payment_intent_id": { "type": "string" },
+          "state": {
+            "type": "string",
+            "enum": [
+              "created", "inventory_reserved", "provider_submission_pending", "provider_pending",
+              "confirmed", "fulfilled", "failed", "expired_pending_reconciliation",
+              "confirmed_late", "manual_review", "refund_pending", "refunded"
+            ]
+          },
+          "amount_cents": { "type": "integer" },
+          "currency": { "type": "string" },
+          "redirect_url": { "type": ["string", "null"] },
+          "provider_checkout_id": { "type": ["string", "null"] }
+        }
+      },
+      "PaymentIntentEnvelope": {
+        "type": "object",
+        "required": ["data"],
+        "properties": { "data": { "$ref": "#/components/schemas/PaymentIntent" } }
+      },
+      "Ticket": {
+        "type": "object",
+        "description": "Matches DundaWeb.TicketJSON.data/1 exactly. `status` here is the app-facing status (attended/active/pending) DERIVED from Dunda.Ticketing.Ticket's persisted status (valid/transferred/scanned/revoked/refunded), not the persisted enum itself — see that module.",
+        "required": ["id", "event_id", "event_name", "venue", "tier_label", "status"],
+        "properties": {
+          "id": { "type": "string" },
+          "event_id": { "type": "string" },
+          "event_name": { "type": "string" },
+          "venue": { "type": "string" },
+          "date_label": { "type": "string" },
+          "tier_label": { "type": ["string", "null"] },
+          "face_value_kes": { "type": "integer" },
+          "is_vip": { "type": "boolean" },
+          "holder": { "type": "string" },
+          "protocol_version": { "type": "integer" },
+          "credential_status": { "type": "string" },
+          "is_scanned": { "type": "boolean" },
+          "status": { "type": "string", "enum": ["attended", "active", "pending"] },
+          "resale_status": { "type": "string" }
+        }
+      },
+      "TicketListEnvelope": {
+        "type": "object",
+        "required": ["data"],
+        "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/Ticket" } } }
+      },
+      "DsrRequest": {
+        "type": "object",
+        "required": ["id", "request_type", "status"],
+        "properties": {
+          "id": { "type": "string" },
+          "request_type": { "type": "string", "enum": ["access", "rectification", "erasure", "portability", "objection"] },
+          "status": { "type": "string", "enum": ["received", "in_progress", "completed", "rejected"] },
+          "due_by": { "type": ["string", "null"] }
+        }
+      },
+      "DsrRequestEnvelope": {
+        "type": "object",
+        "required": ["data"],
+        "properties": { "data": { "$ref": "#/components/schemas/DsrRequest" } }
+      },
+      "DsrRequestUpdateEnvelope": {
+        "type": "object",
+        "required": ["data"],
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": ["id", "request_type", "status"],
+            "properties": {
+              "id": { "type": "string" },
+              "request_type": { "type": "string" },
+              "status": { "type": "string", "enum": ["received", "in_progress", "completed", "rejected"] }
+            }
+          }
+        }
+      },
+      "PrivacyExportEnvelope": {
+        "type": "object",
+        "required": ["data"],
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": ["user", "tickets", "requests"],
+            "properties": {
+              "user": { "type": "object" },
+              "tickets": { "type": "array" },
+              "requests": { "type": "array" }
+            }
+          }
+        }
+      },
+      "ErrorEnvelope": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": { "code": { "type": "string" } }
+          },
+          "errors": { "type": "object" }
+        }
+      }
+    }
+  }
+}

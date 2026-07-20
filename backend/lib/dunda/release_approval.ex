@@ -5,7 +5,11 @@ defmodule Dunda.ReleaseApproval do
   import Ecto.Changeset
 
   @primary_key {:id, :binary_id, autogenerate: true}
-  @roles ~w(security finance operations)
+  # Extended from (security, finance, operations) to the full five-role G12
+  # governance set (Phase 12 §12.12) — product and privacy sign-off are now
+  # required before any globally guarded feature can activate, matching the
+  # root plan's exit gate: "ops/security/product/finance/privacy approvals".
+  @roles ~w(security finance operations product privacy)
   @type t :: %__MODULE__{}
 
   schema "release_approvals" do

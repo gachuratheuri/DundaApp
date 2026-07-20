@@ -244,7 +244,7 @@ defmodule Dunda.Billing do
          amount_cents: amount_cents,
          currency: event.currency || "KES",
          quantity: quantity,
-         phone: Map.get(attrs, :phone) || Map.get(attrs, "phone"),
+         phone_encrypted: Map.get(attrs, :phone) || Map.get(attrs, "phone"),
          email: Map.get(attrs, :email) || Map.get(attrs, "email"),
          event_id: event.id,
          ticket_tier_id: tier_id,
@@ -367,7 +367,7 @@ defmodule Dunda.Billing do
       merchant_reference: order.merchant_reference,
       amount_cents: order.amount_cents,
       currency: order.currency,
-      phone: order.phone,
+      phone: order.phone_encrypted,
       email: Map.get(attrs, :email),
       description: Map.get(attrs, :description, "Dunda ticket purchase")
     }

@@ -17,6 +17,11 @@ defmodule DundaWeb.Plugs.OrganiserAuthPlug do
       case Accounts.get_user(user_id) do
         %Accounts.User{} = user ->
           if DundaWeb.PortalAccess.allowed?(user) do
+            # Correlation metadata (Phase 11/12 observability). The specific
+            # organisation being operated on is resolved deeper in each
+            # LiveView/controller (by slug or membership); this is the
+            # operator identity, always known at this layer.
+            Logger.metadata(organiser_user_id: user.id)
             assign(conn, :current_organiser, user)
           else
             redirect_to_login(conn)

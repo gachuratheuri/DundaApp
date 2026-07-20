@@ -63,6 +63,104 @@ defmodule Dunda.Accounts.Privacy do
     end
   end
 
+  @statuses ~w(received in_progress completed rejected)
+
+  @doc """
+  Applies a bounded, safe rectification (display name only — email/phone
+  changes go through the existing account-settings/OAuth reverification
+  flows, not a generic DSR PATCH, since those fields are also authentication
+  identity). Requires the request to belong to `user_id` and be of type
+  `"rectification"`; completes the request on success.
+  """
+  @spec process_rectification(integer(), Ecto.UUID.t(), map()) ::
+          {:ok, DataSubjectRequest.t()} | {:error, :not_found | :wrong_request_type | Ecto.Changeset.t()}
+  def process_rectification(user_id, request_id, attrs) do
+    with {:ok, request} <- fetch_own_request(user_id, request_id, "rectification"),
+         %User{} = user <- Repo.get(User, user_id) || {:error, :not_found},
+         {:ok, _user} <- user |> User.rectification_changeset(attrs) |> Repo.update() do
+      complete_request(request, %{rectified_fields: attrs |> Map.keys() |> Enum.map(&to_string/1)})
+    else
+      {:error, _reason} = error -> error
+    end
+  end
+
+  @doc """
+  Records an objection to processing. Objection does not delete or export
+  anything automatically — it is a status change plus a durable, auditable
+  note of what the subject objected to, for a human to act on (e.g. suppress
+  a specific processing purpose). Requires the request to belong to
+  `user_id` and be of type `"objection"`.
+  """
+  @spec record_objection(integer(), Ecto.UUID.t(), String.t() | nil) ::
+          {:ok, DataSubjectRequest.t()} | {:error, :not_found | :wrong_request_type | Ecto.Changeset.t()}
+  def record_objection(user_id, request_id, scope \\ nil) do
+    with {:ok, request} <- fetch_own_request(user_id, request_id, "objection") do
+      transition_status(request, "in_progress", %{notes: objection_note(scope)})
+    end
+  end
+
+  @doc """
+  Operator-driven status transition (`received -> in_progress -> completed
+  | rejected`; `completed`/`rejected` are terminal). Intended for ops
+  tooling (`mix dunda.dsr_transition`), not end-user self-service.
+  """
+  @spec transition_status(DataSubjectRequest.t(), String.t(), map()) ::
+          {:ok, DataSubjectRequest.t()} | {:error, :invalid_transition | Ecto.Changeset.t()}
+  def transition_status(%DataSubjectRequest{} = request, new_status, attrs \\ %{})
+      when new_status in @statuses do
+    allowed = %{
+      "received" => ~w(received in_progress completed rejected),
+      "in_progress" => ~w(in_progress completed rejected),
+      "completed" => ~w(completed),
+      "rejected" => ~w(rejected)
+    }
+
+    if new_status in Map.get(allowed, request.status, []) do
+      changes =
+        attrs
+        |> Map.put(:status, new_status)
+        |> maybe_put_completed_at(new_status)
+
+      case request |> DataSubjectRequest.changeset(changes) |> Repo.update() do
+        {:ok, updated} ->
+          _ = Dunda.Audit.record(%{actor_user_id: request.user_id, action: "privacy.request_status_changed", resource_type: "data_subject_request", resource_id: request.id, metadata: %{from: request.status, to: new_status}})
+          {:ok, updated}
+
+        {:error, changeset} ->
+          {:error, changeset}
+      end
+    else
+      {:error, :invalid_transition}
+    end
+  end
+
+  defp complete_request(request, metadata) do
+    case transition_status(request, "completed", %{}) do
+      {:ok, updated} ->
+        _ = Dunda.Audit.record(%{actor_user_id: request.user_id, action: "privacy.rectification_applied", resource_type: "data_subject_request", resource_id: request.id, metadata: metadata})
+        {:ok, updated}
+
+      error ->
+        error
+    end
+  end
+
+  defp fetch_own_request(user_id, request_id, expected_type) do
+    case Repo.get_by(DataSubjectRequest, id: request_id, user_id: user_id) do
+      nil -> {:error, :not_found}
+      %{request_type: ^expected_type} = request -> {:ok, request}
+      _other -> {:error, :wrong_request_type}
+    end
+  end
+
+  defp maybe_put_completed_at(changes, status) when status in ["completed", "rejected"],
+    do: Map.put(changes, :completed_at, DateTime.utc_now() |> DateTime.truncate(:second))
+
+  defp maybe_put_completed_at(changes, _status), do: changes
+
+  defp objection_note(nil), do: "Objection to processing recorded; scope not specified by subject."
+  defp objection_note(scope), do: "Objection to processing recorded. Scope: #{String.slice(to_string(scope), 0, 500)}"
+
   @doc "Pseudonymises direct account data while retaining statutory evidence."
   @spec anonymise_user(integer()) :: {:ok, User.t()} | {:error, :user_not_found | term()}
   def anonymise_user(user_id) do

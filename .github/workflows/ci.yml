@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   frontend:
-    name: Frontend (typecheck + lint)
+    name: Frontend (typecheck + lint + test)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -39,8 +39,11 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Test (Jest — see package.json "jest" config)
+        run: npm test -- --ci
+
   backend:
-    name: Backend (format + compile + credo + test)
+    name: Backend (format + compile + credo + dialyzer + test)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -78,6 +81,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Elixir/OTP
         uses: erlef/setup-beam@v1
@@ -94,6 +99,16 @@ jobs:
           key: ${{ runner.os }}-mix-${{ hashFiles('backend/mix.lock') }}
           restore-keys: ${{ runner.os }}-mix-
 
+      # Dialyzer's PLT is expensive to rebuild; cache it independently of the
+      # general deps/_build cache (invalidated only when deps or the Elixir/
+      # OTP version change, not on every source-code commit).
+      - name: Cache Dialyzer PLTs
+        uses: actions/cache@v4
+        with:
+          path: backend/priv/plts
+          key: ${{ runner.os }}-dialyzer-${{ hashFiles('backend/mix.lock') }}
+          restore-keys: ${{ runner.os }}-dialyzer-
+
       - name: Install dependencies
         run: mix deps.get
 
@@ -106,8 +121,180 @@ jobs:
       - name: Credo (static analysis)
         run: mix credo --strict
 
+      - name: Dialyzer
+        run: mix dialyzer
+
       - name: Dependency security audit
         run: mix hex.audit
 
+      - name: git diff --check (no trailing-whitespace/conflict-marker debris in this PR's changes)
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch origin ${{ github.base_ref }} --depth=1
+          git diff --check "origin/${{ github.base_ref }}"...HEAD
+
+      - name: Migration immutability (no PR may modify a migration already on main)
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch origin ${{ github.base_ref }} --depth=1
+          changed_migrations=$(git diff --name-only --diff-filter=M "origin/${{ github.base_ref }}"...HEAD -- priv/repo/migrations/ || true)
+          if [ -n "$changed_migrations" ]; then
+            echo "::error::These already-merged migrations were modified — migrations are forward-fix-only (docs/phase_12_verification_observability_rollout.md § Controlled rollout). Add a new migration instead:"
+            echo "$changed_migrations"
+            exit 1
+          fi
+
+      - name: Reject assertion-free/commented-out test bodies in changed test files
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch origin ${{ github.base_ref }} --depth=1
+          changed_tests=$(git diff --name-only --diff-filter=ACM "origin/${{ github.base_ref }}"...HEAD -- 'test/**/*_test.exs' || true)
+          failed=0
+          for f in $changed_tests; do
+            if [ -f "$f" ] && grep -nE '^\s*#\s*assert' "$f"; then
+              echo "::error file=$f::commented-out assertion found — a test with no live assertion is vacuous"
+              failed=1
+            fi
+          done
+          exit $failed
+
       - name: Run tests
-        run: mix test
+        run: mix test --cover
+
+  migration-drill:
+    name: Migration drill (production-shaped dataset)
+    runs-on: ubuntu-latest
+    needs: backend
+    defaults:
+      run:
+        working-directory: ./backend
+    env:
+      MIX_ENV: test
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      REDIS_HOST: localhost
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: '1.15'
+          otp-version: '26'
+      - uses: actions/cache@v4
+        with:
+          path: |
+            backend/deps
+            backend/_build
+          key: ${{ runner.os }}-mix-${{ hashFiles('backend/mix.lock') }}
+          restore-keys: ${{ runner.os }}-mix-
+      - run: mix deps.get
+      - run: mix ecto.create --quiet
+      - name: Migration drill (migrates to HEAD~1, seeds production-shaped data, applies latest migration, verifies no row loss)
+        run: mix dunda.migration_drill
+
+  mutation-test:
+    name: Targeted mutation testing (financial/authorisation guards)
+    runs-on: ubuntu-latest
+    needs: backend
+    if: github.event_name == 'pull_request'
+    defaults:
+      run:
+        working-directory: ./backend
+    env:
+      MIX_ENV: test
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      REDIS_HOST: localhost
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Path-filtered: mutation testing copies the whole project per mutant
+      # (see backend/lib/mix/tasks/dunda.mutation_test.ex) and is slow by
+      # design — only worth running when a mutation target or its covering
+      # test actually changed.
+      - name: Check whether any mutation target changed
+        id: filter
+        run: |
+          git fetch origin ${{ github.base_ref }} --depth=1
+          changed=$(git diff --name-only "origin/${{ github.base_ref }}"...HEAD -- \
+            backend/lib/dunda/checkout.ex \
+            backend/lib/dunda/checkout/journal.ex \
+            backend/lib/dunda/checkout/payment_intent.ex \
+            backend/lib/dunda/security/webhook.ex \
+            backend/lib/mix/tasks/dunda.mutation_test.ex \
+            backend/test/dunda/inventory_property_test.exs \
+            backend/test/dunda/ledger_property_test.exs \
+            backend/test/dunda/payment_intent_transition_property_test.exs \
+            backend/test/dunda/security/webhook_test.exs || true)
+          if [ -n "$changed" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; else echo "run=false" >> "$GITHUB_OUTPUT"; fi
+
+      - uses: erlef/setup-beam@v1
+        if: steps.filter.outputs.run == 'true'
+        with:
+          elixir-version: '1.15'
+          otp-version: '26'
+      - uses: actions/cache@v4
+        if: steps.filter.outputs.run == 'true'
+        with:
+          path: |
+            backend/deps
+            backend/_build
+          key: ${{ runner.os }}-mix-${{ hashFiles('backend/mix.lock') }}
+          restore-keys: ${{ runner.os }}-mix-
+      - name: mix deps.get && mix compile
+        if: steps.filter.outputs.run == 'true'
+        run: mix deps.get && mix compile
+        working-directory: ./backend
+      - name: mix dunda.mutation_test
+        if: steps.filter.outputs.run == 'true'
+        run: mix dunda.mutation_test
+        working-directory: ./backend

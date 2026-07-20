@@ -1,0 +1,98 @@
+# Prometheus alerting rules for Dunda's business invariants — as opposed to
+# CPU/memory (see docs/phase_12_verification_observability_rollout.md
+# § Observability, "alerts based on business invariants, not only CPU and
+# memory"). Every `expr` below queries a real metric this application
+# exposes at `GET /internal/metrics/prometheus`
+# (`Dunda.Observability.render_prometheus/0`) — none of these are
+# aspirational metric names.
+#
+# Activating this against a live Prometheus/Alertmanager is external
+# evidence: this file is not wired to any deployed Prometheus instance by
+# this repository. Each `runbook_url` points at a checked-in runbook
+# (docs/runbooks/) — resolve the relative path against your docs hosting.
+
+groups:
+  - name: dunda-business-invariants
+    rules:
+      - alert: DundaUnreconciledPayments
+        # reconciliation_diff_count is set by
+        # Dunda.Workers.FinancialReconciliationWorker — a confirmed/fulfilled
+        # payment intent with no matching settlement journal transaction.
+        # The root-plan SLO is literally zero.
+        expr: dunda_gauge{name="reconciliation_diff_count"} > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $value }} confirmed payment(s) have no settlement journal entry"
+          runbook_url: "docs/runbooks/reconciliation-diff.md"
+
+      - alert: DundaCheckoutErrorRateSpike
+        # A proxy for "oversell attempted and correctly rejected by the
+        # inventory_pool_counts_valid DB constraint" as well as any other
+        # checkout failure mode — this repo does not expose a direct
+        # "oversell attempts blocked" counter (the constraint firing raises
+        # inside the transaction; it does not currently increment a metric).
+        # A sustained spike specifically on /api/checkout is the practical
+        # signal until that gap (see docs/phase_12 findings table) is closed.
+        expr: |
+          rate(dunda_requests_5xx_total{route="/api/checkout"}[5m])
+            /
+          rate(dunda_requests_total{route="/api/checkout"}[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Checkout 5xx rate above 5% for 5 minutes"
+          runbook_url: "docs/runbooks/oversell.md"
+
+      - alert: DundaReservationLatencyBreach
+        expr: |
+          histogram_quantile(0.99, sum(rate(dunda_latency_bucket_count{route="/api/checkout"}[5m])) by (le)) > 150
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Reservation p99 latency above the 150ms SLO"
+          runbook_url: "docs/runbooks/stuck-payment.md"
+
+      - alert: DundaDsrDeadlineOverdue
+        # Set by Dunda.Workers.DsrDeadlineWorker (Phase 11 §11.5), hourly.
+        expr: dunda_gauge{name="dsr_requests_overdue"} > 0
+        for: 1h
+        labels:
+          severity: high
+        annotations:
+          summary: "{{ $value }} data-subject request(s) past their statutory due_by deadline"
+          runbook_url: "docs/runbooks/dsr-overdue.md"
+
+      - alert: DundaWebhookDuplicateSpike
+        # Set by Dunda.Checkout.record_provider_event/1 whenever the unique
+        # (provider, provider_event_id) constraint rejects a re-delivery.
+        # Some duplicates are expected (at-least-once provider delivery);
+        # a sustained spike suggests a provider retry storm or a broken
+        # idempotency key upstream, worth a look even though duplicates are
+        # provably handled safely (test/dunda/payments/duplicate_callback_test.exs).
+        expr: rate(dunda_counter_total{name="webhook_duplicate_total"}[15m]) > 1
+        for: 15m
+        labels:
+          severity: info
+        annotations:
+          summary: "Sustained webhook duplicate-delivery rate"
+          runbook_url: "docs/runbooks/stuck-payment.md"
+
+      - alert: DundaPayoutBatchStuck
+        # payment_pending_reconciliation_count is set by
+        # Dunda.Workers.PaymentReconciliationWorker for provider_pending
+        # payment intents; there is no equivalent payout-age gauge yet
+        # (tracked in docs/phase_12's findings table as a follow-up metric —
+        # Dunda.Organisations.PayoutBatch has no age-since-submitted gauge
+        # today). This rule intentionally targets the payment-side signal
+        # that DOES exist as a placeholder until that gap closes.
+        expr: dunda_gauge{name="payment_pending_reconciliation_count"} > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Payment intent(s) moved to reconciliation after exceeding the pending-age threshold"
+          runbook_url: "docs/runbooks/payout-stuck.md"

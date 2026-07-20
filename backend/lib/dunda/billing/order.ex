@@ -21,7 +21,9 @@ defmodule Dunda.Billing.Order do
     field :amount_cents, :integer
     field :currency, :string, default: "KES"
     field :quantity, :integer, default: 1
-    field :phone, :string
+    # Checkout contact phone is encrypted at rest (Phase 11 data-governance
+    # hardening); it was plaintext before `phase11_encrypt_contact_fields`.
+    field :phone_encrypted, Dunda.Encrypted.Binary
     field :idempotency_key, :string
     field :redirect_url, :string
 
@@ -54,7 +56,7 @@ defmodule Dunda.Billing.Order do
       :amount_cents,
       :currency,
       :quantity,
-      :phone,
+      :phone_encrypted,
       :event_id, :ticket_tier_id, :idempotency_key,
       :organisation_id, :kind, :resale_listing_id,
       :user_id

@@ -1,0 +1,65 @@
+{
+  "title": "Dunda — Checkout Funnel",
+  "uid": "dunda-checkout-funnel",
+  "description": "Driven by GET /internal/metrics/prometheus (Dunda.Observability.render_prometheus/0). Import into Grafana with a Prometheus datasource scraping that endpoint.",
+  "schemaVersion": 39,
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Checkout requests/sec by status",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        { "expr": "sum(rate(dunda_requests_total{route=\"/api/checkout\"}[5m])) by (status)", "legendFormat": "{{status}}", "refId": "A" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Reservation latency p50/p95/p99 (ms)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(dunda_latency_bucket_count{route=\"/api/checkout\"}[5m])) by (le))", "legendFormat": "p50", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, sum(rate(dunda_latency_bucket_count{route=\"/api/checkout\"}[5m])) by (le))", "legendFormat": "p95 (SLO: 300)", "refId": "B" },
+        { "expr": "histogram_quantile(0.99, sum(rate(dunda_latency_bucket_count{route=\"/api/checkout\"}[5m])) by (le))", "legendFormat": "p99 (SLO: 150)", "refId": "C" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Checkout error rate",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 8 },
+      "targets": [
+        { "expr": "sum(rate(dunda_requests_5xx_total{route=\"/api/checkout\"}[5m])) / sum(rate(dunda_requests_total{route=\"/api/checkout\"}[5m]))", "refId": "A" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Webhook duplicate deliveries (rate)",
+      "type": "timeseries",
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 8 },
+      "targets": [
+        { "expr": "rate(dunda_counter_total{name=\"webhook_duplicate_total\"}[15m])", "refId": "A" }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Webhook durable-ack latency (last, ms)",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 8 },
+      "targets": [
+        { "expr": "dunda_gauge{name=\"webhook_ack_ms_last\"}", "refId": "A" }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Webhook SLO breaches (>2s, cumulative)",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 8 },
+      "targets": [
+        { "expr": "dunda_counter_total{name=\"webhook_ack_breach_total\"}", "refId": "A" }
+      ]
+    }
+  ]
+}

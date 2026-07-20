@@ -1,0 +1,45 @@
+{
+  "title": "Dunda — Inventory",
+  "uid": "dunda-inventory",
+  "description": "Driven by GET /internal/metrics/prometheus. Invariant 1 (sold + reserved <= capacity) is enforced in Postgres (constraint + guarded update); this dashboard observes the request-level symptoms of contention, not the DB rows directly — pair with `mix dunda.phase_9_recovery --report` for authoritative inventory counts.",
+  "schemaVersion": 39,
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Checkout request rate (proxy for reservation attempt rate)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        { "expr": "sum(rate(dunda_requests_total{route=\"/api/checkout\"}[1m])) by (status)", "legendFormat": "{{status}}", "refId": "A" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Reservation p99 latency (ms) vs 150ms SLO",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        { "expr": "histogram_quantile(0.99, sum(rate(dunda_latency_bucket_count{route=\"/api/checkout\"}[5m])) by (le))", "legendFormat": "p99", "refId": "A" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Inventory Redis-projection reconciliation failures (cumulative)",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 8 },
+      "targets": [
+        { "expr": "dunda_counter_total{name=\"inventory_reconciliation_failed_total\"}", "refId": "A" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Oban queue depth (inventory + payments queues, HPA signal)",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 8 },
+      "targets": [
+        { "expr": "dunda_oban_queue_depth", "refId": "A" }
+      ]
+    }
+  ]
+}

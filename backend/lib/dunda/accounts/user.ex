@@ -74,6 +74,19 @@ defmodule Dunda.Accounts.User do
     |> unique_constraint([:auth_provider, :provider_uid])
   end
 
+  @doc """
+  Changeset used only by the DSR rectification flow
+  (`Dunda.Accounts.Privacy.process_rectification/3`). Deliberately narrow:
+  display name only. Email/phone are also authentication identity and go
+  through their own reverification flows, not a generic rectification PATCH.
+  """
+  @spec rectification_changeset(t(), map()) :: Ecto.Changeset.t()
+  def rectification_changeset(user, attrs) do
+    user
+    |> cast(attrs, [:name])
+    |> validate_length(:name, min: 1, max: 200)
+  end
+
   @doc "Changeset used only by the controlled data-subject anonymisation flow."
   def privacy_changeset(user, attrs) do
     user

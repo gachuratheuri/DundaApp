@@ -7,6 +7,7 @@ defmodule Dunda.Events do
   """
   import Ecto.Query, only: [from: 2]
 
+  alias Dunda.Checkout.InventoryPool
   alias Dunda.Events.Event
   alias Dunda.Inventory
   alias Dunda.ReadRepo
@@ -110,11 +111,42 @@ defmodule Dunda.Events do
   defp apply_public_filter(query, :category, value), do: from e in query, where: e.category == ^value
   defp apply_public_filter(query, :city, value), do: from e in query, where: e.city == ^value
 
-  @doc "Create a new event manually with safe Redis inventory seeding."
+  @doc """
+  Create a new event manually with safe Redis inventory seeding **and** its
+  authoritative PostgreSQL inventory pool.
+
+  Before this, no application code path ever created a
+  `Dunda.Checkout.InventoryPool` row for an event — only a one-time
+  migration backfill did, for events that already existed when Phase 3-5
+  shipped (`priv/repo/migrations/20260725000001_phase3_5_checkout_authority.exs`).
+  Every event created since then had no pool, so
+  `Dunda.Checkout.create_payment_intent/2` failed for it with
+  `{:error, :inventory_pool_not_found}` — the reservation path was
+  non-functional for any new event. This is a Critical fix; see
+  `docs/phase_12_verification_observability_rollout.md`, finding F0.
+
+  No live code path creates a `Dunda.Ticketing.TicketTier` today (confirmed:
+  no controller, LiveView, or context function does — `event_editor_live.ex`
+  only *simulates* a tiers list in its form state and collapses it into this
+  event's own flat `capacity`/`price_cents` before calling this function),
+  so only the untiered pool needs provisioning here. If/when tier creation
+  is implemented, it must provision its own per-tier pool the same way,
+  mirroring the migration's `'tier:' || tier.id` pool-key convention.
+  """
   @spec create_event(map()) :: {:ok, Event.t()} | {:error, any()}
   def create_event(attrs) do
     Ecto.Multi.new()
     |> Ecto.Multi.insert(:event, Event.changeset(%Event{}, attrs))
+    |> Ecto.Multi.insert(:inventory_pool, fn %{event: event} ->
+      InventoryPool.changeset(%InventoryPool{}, %{
+        pool_key: "event:#{event.id}",
+        capacity: event.capacity,
+        reserved: 0,
+        sold: 0,
+        version: 1,
+        event_id: event.id
+      })
+    end)
     |> Ecto.Multi.run(:inventory, fn _repo, %{event: event} ->
       seed_inventory(event)
     end)
@@ -128,12 +160,53 @@ defmodule Dunda.Events do
     end
   end
 
-  @doc "Update an existing event."
-  @spec update_event(Event.t(), map()) :: {:ok, Event.t()} | {:error, Ecto.Changeset.t()}
+  @doc """
+  Update an existing event. When `capacity` changes, the authoritative
+  untiered inventory pool's capacity is kept in sync in the same
+  transaction — reducing capacity below already-committed inventory
+  (`reserved + sold`) is rejected (`{:error, :capacity_below_committed_inventory}`)
+  rather than silently dropped or left to crash on the database's
+  `inventory_pool_counts_valid` CHECK constraint.
+  """
+  @spec update_event(Event.t(), map()) ::
+          {:ok, Event.t()} | {:error, Ecto.Changeset.t() | :capacity_below_committed_inventory}
   def update_event(%Event{} = event, attrs) do
-    event
-    |> Event.changeset(attrs)
-    |> Repo.update()
+    Repo.transaction(fn ->
+      case event |> Event.changeset(attrs) |> Repo.update() do
+        {:ok, updated_event} ->
+          case sync_inventory_pool_capacity(updated_event) do
+            :ok -> updated_event
+            {:error, reason} -> Repo.rollback(reason)
+          end
+
+        {:error, changeset} ->
+          Repo.rollback(changeset)
+      end
+    end)
+  end
+
+  defp sync_inventory_pool_capacity(%Event{id: id, capacity: capacity}) do
+    {count, _} =
+      Repo.update_all(
+        from(p in InventoryPool,
+          where: p.event_id == ^id and is_nil(p.ticket_tier_id) and p.reserved + p.sold <= ^capacity
+        ),
+        set: [capacity: capacity]
+      )
+
+    cond do
+      count == 1 ->
+        :ok
+
+      # No untiered pool exists for this event (e.g. a pre-fix event that
+      # hasn't been backfilled, or a tiered event) — nothing to keep in
+      # sync; not this function's concern.
+      not Repo.exists?(from(p in InventoryPool, where: p.event_id == ^id and is_nil(p.ticket_tier_id))) ->
+        :ok
+
+      true ->
+        {:error, :capacity_below_committed_inventory}
+    end
   end
 
   defp annotate_remaining(%Event{} = event) do

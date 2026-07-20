@@ -47,6 +47,7 @@ defmodule DundaWeb.Router do
     pipe_through :metrics_rate_limit
 
     get "/metrics", MetricsController, :show
+    get "/metrics/prometheus", MetricsController, :prometheus
     get "/release-health", ReleaseHealthController, :show
   end
 
@@ -121,6 +122,7 @@ defmodule DundaWeb.Router do
     post "/tickets/:id/device-challenge", TicketCredentialController, :challenge
     post "/tickets/:id/bind-device", TicketCredentialController, :bind
     post "/privacy/requests", PrivacyController, :create_request
+    patch "/privacy/requests/:id", PrivacyController, :update_request
     get "/privacy/export", PrivacyController, :export
     # Consumer checkout is identity-bound and price-authoritative. The
     # controller preserves the Phase 0 containment response until G3–G5 pass.
