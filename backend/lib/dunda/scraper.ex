@@ -17,26 +17,28 @@ defmodule Dunda.Scraper do
 
   Returns:
     * `{:ok, :inserted | :updated, %Event{}}`
-    * `{:skip, :duplicate}` when the Bloom pre-filter short-circuits
     * `{:error, changeset}` on validation failure
+
+  The Bloom filter is advisory only. It is deliberately observed but never
+  used as a write gate: a false positive must still reach PostgreSQL's
+  authoritative `ON CONFLICT` upsert.
   """
   @spec upsert_event(map()) ::
-          {:ok, :inserted | :updated, Event.t()} | {:skip, :duplicate} | {:error, Ecto.Changeset.t()}
+          {:ok, :inserted | :updated, Event.t()} | {:error, Ecto.Changeset.t()}
   def upsert_event(%{source: source, external_id: external_id} = attrs) do
     dedup_key = "#{source}:#{external_id}"
 
-    if Dedup.new?(dedup_key) do
-      do_upsert(attrs)
-    else
-      {:skip, :duplicate}
-    end
+    _ = Dedup.new?(dedup_key)
+    do_upsert(attrs)
   end
 
   defp do_upsert(attrs) do
+    attrs = Map.put_new(attrs, :source_last_seen_at, DateTime.utc_now() |> DateTime.truncate(:second))
+    attrs = Map.put_new(attrs, :source_payload_hash, payload_hash(attrs))
     changeset = Event.ingest_changeset(%Event{}, attrs)
 
     insert_opts = [
-      on_conflict: {:replace, [:name, :venue, :starts_at, :price_cents, :capacity, :organisation_id, :updated_at]},
+      on_conflict: {:replace, [:name, :venue, :starts_at, :price_cents, :capacity, :organisation_id, :source_url, :source_last_seen_at, :source_payload_hash, :updated_at]},
       # Partial unique index target — must mirror the migration's WHERE clause.
       conflict_target:
         {:unsafe_fragment, "(source, external_id) WHERE source IS NOT NULL AND external_id IS NOT NULL"},
@@ -52,6 +54,15 @@ defmodule Dunda.Scraper do
       {:error, changeset} ->
         {:error, changeset}
     end
+  end
+
+  defp payload_hash(attrs) do
+    attrs
+    |> Map.drop([:source_last_seen_at, :source_payload_hash])
+    |> Enum.sort_by(fn {key, _value} -> to_string(key) end)
+    |> Jason.encode!()
+    |> then(&:crypto.hash(:sha256, &1))
+    |> Base.encode16(case: :lower)
   end
 
   # Best-effort: seed the Redis inventory key for a brand-new event so the

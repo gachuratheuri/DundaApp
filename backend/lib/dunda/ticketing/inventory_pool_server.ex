@@ -1,53 +1,61 @@
 defmodule Dunda.Ticketing.InventoryPoolServer do
+  @moduledoc """
+  Per-pool serialisation point for inventory acquisition.
+
+  One process per pool id (`"tier:<id>"` or `"event:<id>"`, see
+  `Dunda.Inventory`), registered cluster-wide via `Horde.Registry`. The process
+  seeds the Redis counter from Postgres on first use — always as
+  `capacity - already_sold`, never raw capacity, so a lost Redis key can never
+  resurrect sold inventory — and then serialises the atomic
+  check+decrement+escrow Lua script.
+  """
   use GenServer, restart: :transient
   require Logger
+
+  alias Dunda.Inventory
 
   @lua_script File.read!("priv/lua/inventory_checkout.lua")
   @escrow_ttl_ms 300_000
 
   # ── Client API ──────────────────────────────────────────────────────────────
 
-  def start_link(ticket_tier_id) do
-    GenServer.start_link(__MODULE__, ticket_tier_id, name: via_tuple(ticket_tier_id))
+  def start_link(pool_id) do
+    GenServer.start_link(__MODULE__, pool_id, name: via_tuple(pool_id))
   end
 
-  def acquire_tickets(ticket_tier_id, user_id, quantity) do
-    ensure_started(ticket_tier_id)
-    GenServer.call(via_tuple(ticket_tier_id), {:acquire, user_id, quantity}, 5_000)
+  def acquire_tickets(pool_id, owner_id, quantity, user_id) do
+    ensure_started(pool_id)
+    GenServer.call(via_tuple(pool_id), {:acquire, owner_id, quantity, user_id}, 5_000)
   catch
     :exit, {:timeout, _} -> {:error, :lock_timeout}
-    :exit, {:noproc, _}  -> {:error, :server_unavailable}
-  end
-
-  def release_escrow(ticket_tier_id, user_id) do
-    GenServer.cast(via_tuple(ticket_tier_id), {:release, user_id})
+    :exit, {:noproc, _} -> {:error, :server_unavailable}
   end
 
   # ── Private Helpers ─────────────────────────────────────────────────────────
 
-  defp ensure_started(ticket_tier_id) do
+  defp ensure_started(pool_id) do
     case Horde.DynamicSupervisor.start_child(
-      Dunda.InventorySupervisor,
-      {__MODULE__, ticket_tier_id}
-    ) do
+           Dunda.InventorySupervisor,
+           {__MODULE__, pool_id}
+         ) do
       {:ok, _pid} -> :ok
       {:error, {:already_started, _pid}} -> :ok
       error -> raise "Failed to start InventoryPoolServer: #{inspect(error)}"
     end
   end
 
-  defp via_tuple(ticket_tier_id) do
-    {:via, Horde.Registry, {Dunda.InventoryRegistry, "pool:#{ticket_tier_id}"}}
+  defp via_tuple(pool_id) do
+    {:via, Horde.Registry, {Dunda.InventoryRegistry, "pool:#{pool_id}"}}
   end
 
   # ── GenServer Callbacks ──────────────────────────────────────────────────────
 
   @impl true
-  def init(ticket_tier_id) do
+  def init(pool_id) do
     state = %{
-      ticket_tier_id: ticket_tier_id,
-      inv_key: "inventory:#{ticket_tier_id}",
-      escrow_key: "escrow:#{ticket_tier_id}",
+      pool_id: pool_id,
+      inv_key: Inventory.inventory_key(pool_id),
+      escrow_key: Inventory.escrow_key(pool_id),
       script_sha1: nil
     }
 
@@ -58,69 +66,111 @@ defmodule Dunda.Ticketing.InventoryPoolServer do
 
   @impl true
   def handle_continue(:load_script, state) do
+    seed_inventory_if_missing(state)
+
     case Redix.command(:redix, ["SCRIPT", "LOAD", @lua_script]) do
       {:ok, sha1} ->
         {:noreply, %{state | script_sha1: sha1}}
 
       error ->
-        Logger.warning("[InventoryPool] SCRIPT LOAD failed, will EVAL on demand: #{inspect(error)}")
+        Logger.warning(
+          "[InventoryPool] SCRIPT LOAD failed, will EVAL on demand: #{inspect(error)}"
+        )
+
         {:noreply, state}
     end
   end
 
+  # Seed the live counter from Postgres truth: capacity minus tickets already
+  # issued. Seeding raw capacity would resell sold inventory whenever Redis
+  # loses the key (eviction, restart without persistence, failover).
+  defp seed_inventory_if_missing(state) do
+    case Redix.command(:redix, ["EXISTS", state.inv_key]) do
+      {:ok, 0} ->
+        case initial_count(state.pool_id) do
+          {:ok, count} ->
+            case Redix.command(:redix, ["SET", state.inv_key, to_string(count), "NX"]) do
+              {:ok, _} -> :ok
+              {:error, reason} ->
+                Logger.error("[InventoryPool] failed to SET counter for #{state.inv_key}: #{inspect(reason)}")
+                raise "failed to seed inventory counter: #{inspect(reason)}"
+            end
+
+          {:error, reason} ->
+            Logger.error(
+              "[InventoryPool] cannot seed #{state.inv_key}: #{inspect(reason)}"
+            )
+            raise "failed to compute initial count for seeding: #{inspect(reason)}"
+        end
+
+      {:ok, 1} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.error("[InventoryPool] failed to check EXISTS for #{state.inv_key}: #{inspect(reason)}")
+        raise "failed to check existing inventory: #{inspect(reason)}"
+    end
+  end
+
+  defp initial_count("tier:" <> tier_id) do
+    case Dunda.Repo.get(Dunda.Ticketing.TicketTier, tier_id) do
+      %Dunda.Ticketing.TicketTier{id: id, capacity: capacity} ->
+        {:ok, max(capacity - Dunda.Ticketing.sold_count_for_tier(id), 0)}
+
+      nil ->
+        {:error, :unknown_tier}
+    end
+  rescue
+    e -> {:error, e}
+  end
+
+  defp initial_count("event:" <> event_id), do: initial_count_for_event(event_id)
+  # Legacy pool ids were raw event ids; keep them resolvable.
+  defp initial_count(event_id), do: initial_count_for_event(event_id)
+
+  defp initial_count_for_event(event_id) do
+    case Dunda.Repo.get(Dunda.Events.Event, event_id) do
+      %Dunda.Events.Event{id: id, capacity: capacity} ->
+        {:ok, max(capacity - Dunda.Ticketing.sold_count_for_event(id), 0)}
+
+      nil ->
+        {:error, :unknown_event}
+    end
+  rescue
+    e -> {:error, e}
+  end
+
   @impl true
-  def handle_call({:acquire, user_id, quantity}, _from, state) do
-    keys = [state.inv_key, state.escrow_key]
-    argv = [user_id, to_string(quantity), to_string(@escrow_ttl_ms)]
-    result = run_lua(state.script_sha1, keys, argv, state)
+  def handle_call({:acquire, owner_id, quantity, user_id}, _from, state) do
+    keys = [state.inv_key, state.escrow_key, "user_escrow:#{user_id}"]
+    argv = [to_string(owner_id), to_string(quantity), to_string(@escrow_ttl_ms), to_string(user_id)]
+    result = run_lua(state.script_sha1, keys, argv)
     {:reply, result, state}
   end
 
-  @impl true
-  def handle_cast({:release, user_id}, state) do
-    release_keys = [state.inv_key, state.escrow_key]
-    release_argv = [user_id]
-    Redix.command(:redix, ["EVAL", release_lua_script(), length(release_keys)] ++ release_keys ++ release_argv)
-    {:noreply, state}
-  end
-
   # No cached SHA (Redis was unavailable at boot) — load it on demand via EVAL.
-  defp run_lua(nil, keys, argv, _state) do
+  defp run_lua(nil, keys, argv) do
     Redix.command(:redix, ["EVAL", @lua_script, length(keys)] ++ keys ++ argv)
     |> handle_lua_result()
   end
 
-  defp run_lua(sha1, keys, argv, state) do
+  defp run_lua(sha1, keys, argv) do
     case Redix.command(:redix, ["EVALSHA", sha1, length(keys)] ++ keys ++ argv) do
-      {:ok, 1}  -> :ok
-      {:ok, -1} -> {:error, :insufficient_inventory}
-      {:ok, -2} -> {:error, :duplicate_escrow_attempt}
       {:error, %Redix.Error{message: "NOSCRIPT" <> _}} ->
         Redix.command(:redix, ["EVAL", @lua_script, length(keys)] ++ keys ++ argv)
         |> handle_lua_result()
-      error ->
-        Logger.error("[InventoryPool] Redis failure: #{inspect(error)}")
-        {:error, :system_locking_timeout}
+
+      result ->
+        handle_lua_result(result)
     end
   end
 
-  defp handle_lua_result({:ok, 1}),  do: :ok
+  defp handle_lua_result({:ok, 1}), do: :ok
   defp handle_lua_result({:ok, -1}), do: {:error, :insufficient_inventory}
   defp handle_lua_result({:ok, -2}), do: {:error, :duplicate_escrow_attempt}
-  defp handle_lua_result(_),         do: {:error, :redis_failed}
 
-  defp release_lua_script do
-    """
-    local inv_key    = KEYS[1]
-    local escrow_key = KEYS[2]
-    local user_id    = ARGV[1]
-    local qty = redis.call("HGET", escrow_key, user_id)
-    if qty then
-      redis.call("INCRBY", inv_key, tonumber(qty))
-      redis.call("HDEL", escrow_key, user_id)
-      redis.call("DEL", "expiry:" .. escrow_key .. ":" .. user_id)
-    end
-    return 1
-    """
+  defp handle_lua_result(error) do
+    Logger.error("[InventoryPool] Redis failure: #{inspect(error)}")
+    {:error, :redis_failed}
   end
 end

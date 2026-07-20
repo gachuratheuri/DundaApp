@@ -3,11 +3,14 @@ defmodule DundaWeb.Organiser.EventEditorLive do
 
   alias Dunda.Events
   alias Dunda.Events.Event
+  alias Dunda.Organisations
 
   @impl true
   def mount(params, _session, socket) do
     socket =
       socket
+      |> assign(:organisation_ids, authorised_organisation_ids(socket.assigns.current_organiser.id))
+      |> assign(:organisation_id, first_authorised_organisation_id(socket.assigns.current_organiser.id))
       |> assign(:event_id, params["id"])
       |> assign(:action, socket.assigns.live_action)
       |> assign(:uploaded_files, [])
@@ -16,7 +19,7 @@ defmodule DundaWeb.Organiser.EventEditorLive do
     socket =
       case socket.assigns.action do
         :edit ->
-          case Events.get_event(params["id"]) do
+          case Events.get_event_for_organisations(params["id"], socket.assigns.organisation_ids) do
             nil ->
               socket
               |> put_flash(:error, "Event not found.")
@@ -161,9 +164,15 @@ defmodule DundaWeb.Organiser.EventEditorLive do
       starts_at: starts_at,
       price_cents: primary_tier.price_cents,
       capacity: primary_tier.capacity,
-      organisation_id: 1
+      organisation_id: socket.assigns.organisation_id
     }
 
+    if is_nil(socket.assigns.organisation_id) do
+      {:noreply,
+       socket
+       |> put_flash(:error, "No authorised organisation is available.")
+       |> push_navigate(to: ~p"/portal/events")}
+    else
     case socket.assigns.action do
       :new ->
         case Events.create_event(attrs) do
@@ -180,14 +189,15 @@ defmodule DundaWeb.Organiser.EventEditorLive do
         end
 
       :edit ->
-        case Events.get_event(socket.assigns.event_id) do
+        case Events.get_event_for_organisations(socket.assigns.event_id, socket.assigns.organisation_ids) do
           nil ->
             {:noreply,
              socket
              |> put_flash(:info, "Event updated (Offline Sandbox Mode)")
              |> push_navigate(to: ~p"/portal/events")}
           event ->
-            case Events.update_event(event, attrs) do
+            if Organisations.member?(socket.assigns.current_organiser.id, event.organisation_id, ~w(owner admin manager)) do
+              case Events.update_event(event, Map.put(attrs, :organisation_id, event.organisation_id)) do
               {:ok, _event} ->
                 {:noreply,
                  socket
@@ -198,9 +208,27 @@ defmodule DundaWeb.Organiser.EventEditorLive do
                  socket
                  |> put_flash(:info, "Event updated (Offline Sandbox Mode)")
                  |> push_navigate(to: ~p"/portal/events")}
+              end
+            else
+              {:noreply,
+               socket
+               |> put_flash(:error, "You are not authorised for this organisation.")
+               |> push_navigate(to: ~p"/portal/events")}
             end
         end
     end
+    end
+  end
+
+  defp first_authorised_organisation_id(user_id) do
+    case Organisations.list_organisations_for_user(user_id) do
+      [%{id: id} | _] -> id
+      [] -> nil
+    end
+  end
+
+  defp authorised_organisation_ids(user_id) do
+    Organisations.list_organisations_for_user(user_id) |> Enum.map(& &1.id)
   end
 
   defp parse_cents(str) do

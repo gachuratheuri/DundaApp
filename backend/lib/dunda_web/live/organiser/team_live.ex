@@ -35,17 +35,8 @@ defmodule DundaWeb.Organiser.TeamLive do
               </tr>
             </thead>
             <tbody class="divide-y divide-white/5 text-sm">
-              <tr class="hover:bg-white/5 transition-colors">
-                <td class="px-6 py-4 font-black text-white flex items-center gap-4">
-                  <div class="w-10 h-10 rounded-none bg-nebulamagenta border border-nebulamagenta/50 flex items-center justify-center text-white font-oswald text-lg">D</div>
-                  David M.
-                </td>
-                <td class="px-6 py-4">
-                  <span class="bg-opticyan/10 text-opticyan border border-opticyan/30 px-3 py-1 rounded-none text-[10px] font-bold uppercase tracking-widest">Admin</span>
-                </td>
-                <td class="px-6 py-4 text-right">
-                  <a href="#" class="text-xs uppercase tracking-wider font-black text-[#A0A0FF] hover:text-white transition-colors">Manage</a>
-                </td>
+              <tr>
+                <td class="px-6 py-4 text-gray-500" colspan="3">Tenant membership data is unavailable until the RBAC query is enabled.</td>
               </tr>
             </tbody>
           </table>

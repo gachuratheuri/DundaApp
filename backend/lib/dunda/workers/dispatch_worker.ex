@@ -24,10 +24,14 @@ defmodule Dunda.Workers.DispatchWorker do
 
   @impl Oban.Worker
   def perform(_job) do
-    jobs = dispatch_jobs()
-    {count, _} = Oban.insert_all(jobs) |> tally()
-    Logger.info("DispatchWorker fanned out #{count} fetch jobs")
-    {:ok, count}
+    if Dunda.Containment.blocked?(:dynamic_scraping) do
+      {:cancel, :phase_0_containment}
+    else
+      jobs = dispatch_jobs()
+      {count, _} = Oban.insert_all(jobs) |> tally()
+      Logger.info("DispatchWorker fanned out #{count} fetch jobs")
+      {:ok, count}
+    end
   end
 
   @doc "All fetch jobs for this tick: org-configured targets + static HTML targets."
@@ -44,8 +48,12 @@ defmodule Dunda.Workers.DispatchWorker do
   """
   @spec dynamic_targets_from_orgs() :: [ScrapeTarget.t()]
   def dynamic_targets_from_orgs do
-    Organisations.scrapable_organisations()
-    |> Enum.flat_map(&org_targets/1)
+    if Dunda.Containment.blocked?(:dynamic_scraping) do
+      []
+    else
+      Organisations.scrapable_organisations()
+      |> Enum.flat_map(&org_targets/1)
+    end
   end
 
   defp org_targets(org) do

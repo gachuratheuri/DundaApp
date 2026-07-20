@@ -12,6 +12,7 @@ defmodule Dunda.Workers.InstagramFetchWorker do
   require Logger
 
   alias Dunda.Workers.IngestWorker
+  alias Dunda.Scraper.SchemaGuard
 
   @graph_version "v18.0"
 
@@ -19,6 +20,9 @@ defmodule Dunda.Workers.InstagramFetchWorker do
   def perform(%Oban.Job{args: %{"opts" => %{"account_id" => account_id}} = args}) do
     org_id = args["organisation_id"]
 
+    if Dunda.Containment.blocked?(:dynamic_scraping) do
+      {:cancel, :phase_0_containment}
+    else
     case token() do
       nil ->
         Logger.info("InstagramFetchWorker: INSTAGRAM_GRAPH_TOKEN unset — skipping org #{org_id}")
@@ -32,12 +36,14 @@ defmodule Dunda.Workers.InstagramFetchWorker do
                max_retries: 0,
                receive_timeout: 15_000
              ) do
-          {:ok, %{status: 200, body: %{"data" => data}}} when is_list(data) ->
-            data |> Enum.map(&to_event_shape/1) |> IngestWorker.enqueue("instagram", org_id)
-            :ok
-
-          {:ok, %{status: 200}} ->
-            :ok
+          {:ok, %{status: 200, body: body}} ->
+            case SchemaGuard.api_events("instagram", body) do
+              {:ok, data} ->
+                if data == [], do: SchemaGuard.report_empty("instagram", account_id)
+                data |> Enum.map(&to_event_shape/1) |> IngestWorker.enqueue("instagram", org_id)
+                :ok
+              {:schema_drift, reason} -> {:error, reason}
+            end
 
           {:ok, %{status: status}} ->
             {:error, {:http_status, status}}
@@ -46,6 +52,7 @@ defmodule Dunda.Workers.InstagramFetchWorker do
             Logger.warning("InstagramFetchWorker org #{org_id} failed: #{inspect(reason)}")
             {:error, reason}
         end
+    end
     end
   end
 

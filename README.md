@@ -73,17 +73,38 @@ The backend exposes a JSON API (Phoenix + Bandit):
 | Method | Path | Purpose |
 |---|---|---|
 | `GET` | `/healthz` | Liveness/readiness (Postgres + Redis) |
-| `GET` | `/api/events` | Discover feed with live remaining inventory |
-| `POST` | `/api/checkout` | Reserve inventory + initiate M-Pesa STK push |
-| `GET` | `/api/tickets` | Signed entitlement tokens for the QR vault |
+| `GET` | `/api/events` | Published upcoming catalogue with stable cursor pagination and per-tier live remaining inventory |
+| `POST` | `/api/checkout` | Reserve a tier (optional `tier_id`; defaults to cheapest on-sale) + M-Pesa STK push. Buyer is always the authenticated user. |
+| `GET` | `/api/tickets` | Ticket metadata and protocol-v2 credential state for the QR vault |
 | `POST` | `/api/mpesa/callback` | Daraja STK result webhook |
+
+The organiser portal at `/portal` is session-authenticated (email/password via
+`/portal/login`); all LiveViews are guarded by an `on_mount` hook plus a plug.
 
 The app consumes these through `frontend/src/api/client.ts` (`useEvents`,
 `useTickets`, `checkout`) with graceful fallback to bundled sample data.
 
 ## Status
 
-Reference implementation with a working end-to-end path: discover → checkout →
-M-Pesa (sandbox) → settlement → signed offline ticket. Next steps: attendee
-auth, multi-tier ticketing, the Kotlin venue scanner, and the Bloom-filter
-revocation sync described in `dunda_full_technical_audit.md`.
+The repository is a reference implementation under emergency containment.
+Payment, callback, payout, resale, weak-authentication, and scraping paths are
+disabled by default. Phase 4 adds a persisted three-party release gate; an
+operator must request containment exit and provide current security, finance,
+and operations evidence for each feature before any globally guarded path can
+activate. See `docs/phase_4_controlled_release.md` for the runbook.
+Phase 5 adds read-only post-release SLO evidence and converged Kubernetes
+deployment controls; it does not replace independent cluster telemetry,
+backup/restore drills, or incident command.
+Phase 6 adds durable resale-transfer, refund, and payout-batch accounting with
+monotonic state machines; these money-moving paths remain disabled until the
+independent release gate and reconciliation evidence are approved. See
+`docs/phase_6_settlement_resale_payouts.md`.
+The Phase 3–5 checkout authority is additive: quotes, payment intents,
+PostgreSQL reservations, outbox dispatch, balanced journals, and provider-event
+reconciliation are implemented but remain containment-blocked until G3–G5
+evidence is complete. See `docs/phase_3_5_checkout_authority.md`.
+Phase 7 replaces the unsafe shared-TOTP admission claim with versioned,
+device-bound Ed25519 proofs and a venue-local coordinator model. Credential and
+scanner routes remain containment-blocked until cross-language, replay,
+transfer, revocation, clock-drift, and partition evidence passes. See
+`docs/phase_7_ticket_security.md`.

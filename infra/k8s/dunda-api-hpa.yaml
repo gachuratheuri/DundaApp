@@ -1,115 +1,8 @@
----
-# Headless Service for libcluster DNS discovery
-apiVersion: v1
-kind: Service
-metadata:
-  name: dunda-api-headless
-  labels:
-    app: dunda-api
-spec:
-  clusterIP: None
-  selector:
-    app: dunda-api
-  ports:
-    - name: epmd
-      port: 4369
-      targetPort: 4369
-    - name: http
-      port: 4000
-      targetPort: 4000
-
----
-# Keep a quorum of pods during voluntary disruptions (node drains, rollouts) so
-# Redlock and Horde membership stay healthy.
-apiVersion: policy/v1
-kind: PodDisruptionBudget
-metadata:
-  name: dunda-api-pdb
-spec:
-  minAvailable: 2
-  selector:
-    matchLabels:
-      app: dunda-api
-
----
-# Deployment exposing POD_IP via Downward API
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: dunda-api
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: dunda-api
-  template:
-    metadata:
-      labels:
-        app: dunda-api
-    spec:
-      # libcluster's Kubernetes.DNS strategy resolves peers via the headless
-      # service; pods need a stable hostname/subdomain for Erlang distribution.
-      subdomain: dunda-api-headless
-      containers:
-      - name: dunda-api
-        image: dunda-api:latest
-        env:
-        - name: POD_IP
-          valueFrom:
-            fieldRef:
-              fieldPath: status.podIP
-        # Erlang distribution over POD_IP so Horde/libcluster can connect peers.
-        - name: RELEASE_DISTRIBUTION
-          value: "name"
-        - name: RELEASE_NODE
-          value: "dunda@$(POD_IP)"
-        - name: ERLANG_COOKIE
-          valueFrom:
-            secretKeyRef:
-              name: dunda-secrets
-              key: erlang-cookie
-        envFrom:
-        - secretRef:
-            name: dunda-secrets
-        ports:
-        - name: http
-          containerPort: 4000
-        - name: epmd
-          containerPort: 4369
-        resources:
-          requests:
-            cpu: "500m"
-            memory: "512Mi"
-          limits:
-            cpu: "2"
-            memory: "1Gi"
-        readinessProbe:
-          httpGet:
-            path: /healthz
-            port: http
-          initialDelaySeconds: 5
-          periodSeconds: 10
-          failureThreshold: 3
-        livenessProbe:
-          httpGet:
-            path: /healthz
-            port: http
-          initialDelaySeconds: 15
-          periodSeconds: 20
-          failureThreshold: 3
-        # Give in-flight onsale checkouts time to drain before SIGKILL.
-        lifecycle:
-          preStop:
-            exec:
-              command: ["sleep", "15"]
-      terminationGracePeriodSeconds: 30
-
----
-# HPA configuration for Elixir API pods
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: dunda-api-hpa
+  namespace: default
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
@@ -130,12 +23,28 @@ spec:
       target:
         type: Utilization
         averageUtilization: 75
+  # The metrics adapter must publish Oban queue depth/latency. CPU and memory
+  # remain fallback signals, never the sole worker-saturation control.
+  - type: External
+    external:
+      metric:
+        name: oban_queue_depth
+        selector:
+          matchLabels:
+            app: dunda-api
+      target:
+        type: AverageValue
+        averageValue: "50"
   behavior:
     scaleUp:
-      stabilizationWindowSeconds: 0  # Scale up immediately
+      stabilizationWindowSeconds: 0
       policies:
       - type: Pods
         value: 10
         periodSeconds: 15
     scaleDown:
-      stabilizationWindowSeconds: 300  # Wait 5 min before scaling down
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 25
+        periodSeconds: 60

@@ -10,15 +10,15 @@ defmodule DundaWeb.BillingController do
   alias Dunda.Billing
 
   def create(conn, params) do
+    user = conn.assigns.current_user
+
     attrs = %{
       event_id: params["event_id"],
-      organisation_id: params["organisation_id"],
-      user_id: params["user_id"],
-      amount_cents: params["amount_cents"],
-      currency: params["currency"] || "KES",
+      ticket_tier_id: params["tier_id"],
+      user_id: user.id,
       quantity: params["quantity"] || 1,
       phone: params["phone"],
-      email: params["email"]
+      idempotency_key: List.first(get_req_header(conn, "idempotency-key"))
     }
 
     case Billing.create_order(attrs) do
@@ -39,10 +39,19 @@ defmodule DundaWeb.BillingController do
 
       {:error, reason} ->
         conn
-        |> put_status(:bad_gateway)
-        |> json(%{error: "checkout_failed", detail: inspect(reason)})
+        |> put_status(error_status(reason))
+        |> json(%{error: %{code: error_code(reason)}})
     end
   end
+
+  defp error_status(reason) when reason in [:not_found], do: :not_found
+  defp error_status(reason) when reason in [:idempotency_key_required, :invalid_order, :event_not_on_sale, :tier_not_on_sale, :max_per_order_exceeded, :invalid_quantity], do: :unprocessable_entity
+  defp error_status(:idempotency_conflict), do: :conflict
+  defp error_status(:idempotency_incomplete), do: :conflict
+  defp error_status(_), do: :bad_gateway
+
+  defp error_code(reason) when is_atom(reason), do: Atom.to_string(reason)
+  defp error_code(_), do: "checkout_failed"
 
   defp translate_errors(changeset) do
     Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->

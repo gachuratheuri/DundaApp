@@ -15,24 +15,41 @@ defmodule Dunda.Ledger do
   `receipt`. Idempotent: a repeated receipt returns the existing entry.
   """
   @spec settle(String.t(), String.t(), keyword()) ::
-          {:ok, Entry.t()} | {:error, Ecto.Changeset.t()}
+          {:ok, Entry.t()} | {:error, Ecto.Changeset.t() | atom()}
   def settle(transaction_id, receipt, opts \\ []) do
-    attrs = %{
-      transaction_id: to_string(transaction_id),
-      mpesa_receipt: receipt,
-      amount_cents: Keyword.get(opts, :amount_cents),
-      status: "settled"
-    }
+    transaction_id = to_string(transaction_id)
 
-    %Entry{}
-    |> Entry.changeset(attrs)
-    |> Repo.insert(
-      on_conflict: :nothing,
-      conflict_target: :mpesa_receipt
-    )
-    |> case do
-      {:ok, %Entry{id: nil}} -> {:ok, get_by_receipt(receipt)}
-      other -> other
+    case Repo.get_by(Entry, transaction_id: transaction_id) do
+      %Entry{mpesa_receipt: ^receipt} = existing ->
+        {:ok, existing}
+
+      %Entry{} ->
+        {:error, :transaction_already_settled}
+
+      nil ->
+        attrs = %{
+          transaction_id: transaction_id,
+          mpesa_receipt: receipt,
+          amount_cents: Keyword.get(opts, :amount_cents),
+          status: "settled"
+        }
+
+        %Entry{}
+        |> Entry.changeset(attrs)
+        |> Repo.insert(
+          on_conflict: :nothing,
+          conflict_target: :mpesa_receipt
+        )
+        |> case do
+          {:ok, %Entry{id: nil}} ->
+            case Repo.get_by(Entry, transaction_id: transaction_id) do
+              %Entry{mpesa_receipt: ^receipt} = existing -> {:ok, existing}
+              %Entry{} -> {:error, :transaction_already_settled}
+              nil -> {:error, :settlement_not_recorded}
+            end
+
+          other -> other
+        end
     end
   end
 
@@ -65,5 +82,4 @@ defmodule Dunda.Ledger do
     )
   end
 
-  defp get_by_receipt(receipt), do: Repo.get_by(Entry, mpesa_receipt: receipt)
 end

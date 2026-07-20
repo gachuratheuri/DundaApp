@@ -16,7 +16,7 @@ defmodule Dunda.Accounts.User do
   @type t :: %__MODULE__{}
 
   @kyc_statuses ~w(unverified pending verified rejected)
-  @oauth_providers ~w(google apple facebook phone)
+  @oauth_providers ~w(google apple facebook phone email)
 
   schema "users" do
     field :phone_msisdn, Dunda.Encrypted.Binary
@@ -72,6 +72,18 @@ defmodule Dunda.Accounts.User do
     |> validate_email(required: false)
     |> put_change(:confirmed_at, now())
     |> unique_constraint([:auth_provider, :provider_uid])
+  end
+
+  @doc "Changeset used only by the controlled data-subject anonymisation flow."
+  def privacy_changeset(user, attrs) do
+    user
+    |> cast(attrs, [
+      :email, :name, :avatar_url, :auth_provider, :provider_uid, :hashed_password,
+      :phone_msisdn, :phone_msisdn_hash, :device_fingerprint, :confirmed_at
+    ])
+    |> validate_required([:email, :auth_provider])
+    |> validate_inclusion(:auth_provider, @oauth_providers)
+    |> unique_constraint(:email)
   end
 
   @doc "Verify a plaintext password against the stored bcrypt hash (timing-safe)."

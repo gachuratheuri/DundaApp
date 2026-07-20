@@ -21,6 +21,14 @@ defmodule DundaWeb.FallbackController do
     conn |> put_status(:conflict) |> json(error("already_reserved"))
   end
 
+  def call(conn, {:error, :phase_0_containment}) do
+    conn
+    |> put_status(:service_unavailable)
+    |> put_resp_header("retry-after", "86400")
+    |> put_resp_header("x-dunda-containment", "phase-0")
+    |> json(error("phase_0_containment"))
+  end
+
   def call(conn, {:error, reason}) when is_atom(reason) do
     conn |> put_status(:bad_request) |> json(error(Atom.to_string(reason)))
   end

@@ -3,23 +3,17 @@ defmodule DundaWeb.Organiser.DashboardLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    # In a real app we'd fetch this from Ticketing context
-    # total_sales = Dunda.Ticketing.get_total_sales_cents()
-    # recent_purchases = Dunda.Ticketing.list_recent_purchases(limit: 6)
-    
+    # Do not render fabricated financial or operational telemetry.  The
+    # dashboard remains an honest zero/unknown view until tenant-scoped
+    # reporting queries are enabled after the Phase 1 release gate.
     {:ok,
      socket
-     |> assign(:total_sales_cents, 450000000) # Stubbed total
-     |> assign(:tickets_sold_count, 1250)
-     |> assign(:active_events_count, 5)
-     |> assign(:conversion_rate, 24)
+     |> assign(:total_sales_cents, 0)
+     |> assign(:tickets_sold_count, 0)
+     |> assign(:active_events_count, 0)
+     |> assign(:conversion_rate, 0)
      |> assign(:purchases, [])
-     |> assign(:scrapers, [
-       %{name: "Facebook Events Crawler", status: :healthy, lag: "2m ago", rate: "12 runs/day", source: "Facebook API"},
-       %{name: "Instagram Account Parser", status: :healthy, lag: "12m ago", rate: "24 runs/day", source: "IG Graph"},
-       %{name: "Eventbrite Sync Pipeline", status: :warning, lag: "4h ago", rate: "2 runs/day", source: "Eventbrite V3"},
-       %{name: "TicketSasa Catalog Sync", status: :error, lag: "24h ago", rate: "0 runs/day", source: "Sasa Scraper"}
-     ])}
+     |> assign(:scrapers, [])}
   end
 
   # Format currency in KSh

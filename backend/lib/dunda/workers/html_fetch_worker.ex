@@ -11,6 +11,7 @@ defmodule Dunda.Workers.HtmlFetchWorker do
   require Logger
 
   alias Dunda.Scraper.HtmlScraper
+  alias Dunda.Scraper.SchemaGuard
   alias Dunda.Workers.IngestWorker
 
   @sites %{
@@ -23,23 +24,27 @@ defmodule Dunda.Workers.HtmlFetchWorker do
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"opts" => opts} = args}) do
     org_id = args["organisation_id"]
-    url = opts["url"]
-    site = Map.get(@sites, opts["site"], :html)
+    if Dunda.Containment.blocked?(:dynamic_scraping) do
+      {:cancel, :phase_0_containment}
+    else
+      url = opts["url"]
+      site = Map.get(@sites, opts["site"], :html)
 
-    case fetch(url) do
-      {:ok, body} ->
-        body
-        |> HtmlScraper.parse(site)
-        |> IngestWorker.enqueue("html", org_id)
+      case fetch(url) do
+        {:ok, body} ->
+          rows = HtmlScraper.parse(body, site)
+          if rows == [], do: SchemaGuard.report_empty("html", url)
+          IngestWorker.enqueue(rows, "html", org_id)
 
-        :ok
+          :ok
 
-      {:error, :no_url} ->
-        {:cancel, :no_url}
+        {:error, :no_url} ->
+          {:cancel, :no_url}
 
-      {:error, reason} ->
-        Logger.warning("HtmlFetchWorker #{url} failed: #{inspect(reason)}")
-        {:error, reason}
+        {:error, reason} ->
+          Logger.warning("HtmlFetchWorker #{url} failed: #{inspect(reason)}")
+          {:error, reason}
+      end
     end
   end
 
@@ -47,10 +52,6 @@ defmodule Dunda.Workers.HtmlFetchWorker do
   defp fetch(""), do: {:error, :no_url}
 
   defp fetch(url) do
-    case Req.get(url, max_retries: 0, receive_timeout: 15_000, decode_body: false) do
-      {:ok, %{status: 200, body: body}} -> {:ok, body}
-      {:ok, %{status: status}} -> {:error, {:http_status, status}}
-      {:error, reason} -> {:error, reason}
-    end
+    Dunda.Security.URL.fetch(url, receive_timeout: 15_000)
   end
 end

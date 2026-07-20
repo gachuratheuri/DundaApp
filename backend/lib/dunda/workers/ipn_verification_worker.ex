@@ -18,10 +18,14 @@ defmodule Dunda.Workers.IpnVerificationWorker do
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"order_tracking_id" => otid}}) do
-    case Billing.confirm_order(otid) do
+    if Dunda.Containment.blocked?(:billing) do
+      {:cancel, :phase_0_containment}
+    else
+      case Billing.confirm_order(otid) do
       {:ok, _order} -> :ok
       {:error, :order_not_found} -> {:cancel, :order_not_found}
       {:error, reason} -> {:error, reason}
+      end
     end
   end
 end

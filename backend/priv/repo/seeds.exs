@@ -78,10 +78,10 @@ if length(events) >= 2 do
   [event1, event2 | _] = events
   
   # 2 VIP tickets for Event 1
-  Dunda.Ticketing.issue_tickets(nil, event1, user, 2, "VIP FRONT ROW")
-  
+  Dunda.Ticketing.issue_tickets(nil, event1, user, 2, tier_label: "VIP FRONT ROW")
+
   # 1 Regular ticket for Event 2
-  Dunda.Ticketing.issue_tickets(nil, event2, user, 1, "GENERAL")
+  Dunda.Ticketing.issue_tickets(nil, event2, user, 1, tier_label: "GENERAL")
   
   IO.puts("Seeded 3 tickets into wallet for #{user.email}")
 end

@@ -29,9 +29,12 @@ defmodule DundaWeb.Organiser.ScraperLive do
   end
 
   def handle_event("select", %{"id" => id}, socket) do
-    case Organisations.get_organisation(id) do
-      nil -> {:noreply, socket}
-      org -> {:noreply, socket |> assign(:notice, nil) |> select_record(org)}
+    allowed? = Enum.any?(socket.assigns.organisations, &(to_string(&1.id) == to_string(id)))
+
+    case {allowed?, Organisations.get_organisation(id)} do
+      {true, org} when not is_nil(org) -> {:noreply, socket |> assign(:notice, nil) |> select_record(org)}
+      {false, _} -> {:noreply, socket}
+      _ -> {:noreply, socket}
     end
   end
 
@@ -46,31 +49,43 @@ defmodule DundaWeb.Organiser.ScraperLive do
   end
 
   def handle_event("save", %{"organisation" => params}, socket) do
-    selected = socket.assigns.selected
-    result = save_record(selected, params)
+    if Dunda.Containment.blocked?(:dynamic_scraping) do
+      {:noreply,
+       assign(
+         socket,
+         :notice,
+         "Dynamic scraping configuration is disabled while the system is in containment mode."
+       )}
+    else
+      selected = socket.assigns.selected
+      result = save_record(selected, params, socket.assigns.current_organiser.id)
 
-    case result do
-      {:ok, org} ->
-        # Fire an immediate dispatch so new IDs are picked up without waiting
-        # for the next cron tick.
-        if org.scraper_enabled, do: Oban.insert(DispatchWorker.new(%{}))
+      case result do
+        {:ok, org} ->
+          # Fire an immediate dispatch so new IDs are picked up without waiting
+          # for the next cron tick.
+          if org.scraper_enabled, do: Oban.insert(DispatchWorker.new(%{}))
 
-        {:noreply,
-         socket
-         |> assign(:notice, "Saved “#{org.name}”. Dispatch triggered — sources refresh shortly.")
-         |> load_organisations()
-         |> select_record(org)}
+          {:noreply,
+           socket
+           |> assign(:notice, "Saved “#{org.name}”. Dispatch triggered — sources refresh shortly.")
+           |> load_organisations()
+           |> select_record(org)}
 
-      {:error, changeset} ->
-        {:noreply, assign(socket, :form, to_form(changeset))}
+        {:error, changeset} ->
+          {:noreply, assign(socket, :form, to_form(changeset))}
+      end
     end
   end
 
-  defp save_record(%Organisation{id: nil}, params), do: Organisations.create_organisation(params)
-  defp save_record(%Organisation{} = org, params), do: Organisations.update_organisation(org, params)
+  defp save_record(%Organisation{id: nil}, params, user_id),
+    do: Organisations.create_organisation_for_user(user_id, params)
+
+  defp save_record(%Organisation{} = org, params, _user_id),
+    do: Organisations.update_organisation(org, params)
 
   defp load_organisations(socket) do
-    assign(socket, :organisations, Organisations.list_organisations())
+    assign(socket, :organisations, Organisations.list_organisations_for_user(socket.assigns.current_organiser.id))
   end
 
   defp select_record(socket, %Organisation{} = org) do

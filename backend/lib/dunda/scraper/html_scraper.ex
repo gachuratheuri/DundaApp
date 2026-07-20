@@ -142,6 +142,35 @@ defmodule Dunda.Scraper.HtmlScraper do
     |> Enum.reject(&blank_id?/1)
   end
 
+  # Generic, standards-based fallback for organiser-approved pages. It only
+  # consumes schema.org Event JSON-LD; arbitrary page text is never executed
+  # or interpreted as code.
+  defp do_parse(doc, :html) do
+    doc
+    |> Floki.find("script[type=\"application/ld+json\"]")
+    |> Enum.flat_map(fn script ->
+      case Jason.decode(Floki.text(script)) do
+        {:ok, value} when is_map(value) -> [value]
+        {:ok, values} when is_list(values) -> values
+        _ -> []
+      end
+    end)
+    |> Enum.filter(fn event -> event["@type"] in ["Event", ["Event"]] end)
+    |> Enum.map(fn event ->
+      location = event["location"] || %{}
+      %{
+        "site" => "jsonld",
+        "external_id" => jsonld_id(event),
+        "title" => event["name"],
+        "venue" => location["name"],
+        "date_text" => event["startDate"],
+        "price_text" => get_in(event, ["offers", "price"]),
+        "url" => event["url"]
+      }
+    end)
+    |> Enum.reject(&blank_id?/1)
+  end
+
   defp do_parse(_doc, site) do
     Logger.warning("HtmlScraper: no parse/2 clause for site #{inspect(site)}")
     []
@@ -151,6 +180,12 @@ defmodule Dunda.Scraper.HtmlScraper do
 
   defp first([value | _]), do: value
   defp first(_), do: nil
+
+  defp jsonld_id(event) do
+    event["@id"] || event["url"] ||
+      (:crypto.hash(:sha256, to_string(event["name"]) <> to_string(event["startDate"]))
+       |> Base.encode16(case: :lower))
+  end
 
   defp clean(nil), do: nil
   defp clean(text), do: text |> String.trim() |> String.replace(~r/\s+/, " ")

@@ -14,6 +14,12 @@ defmodule DundaWeb.MpesaController do
   Safaricom does not retry indefinitely.
   """
   def callback(conn, params) do
+    unless Dunda.Security.Webhook.valid?(conn, :daraja) do
+      conn
+      |> put_status(:unauthorized)
+      |> json(%{error: %{code: "invalid_webhook_signature"}})
+      |> Plug.Conn.halt()
+    else
     stk = get_in(params, ["Body", "stkCallback"]) || %{}
     checkout_request_id = stk["CheckoutRequestID"]
 
@@ -35,6 +41,7 @@ defmodule DundaWeb.MpesaController do
 
     # Daraja expects this exact acknowledgement shape.
     json(conn, %{"ResultCode" => 0, "ResultDesc" => "Accepted"})
+    end
   end
 
   defp receipt_number(%{"CallbackMetadata" => %{"Item" => items}}) when is_list(items) do

@@ -15,6 +15,12 @@ defmodule DundaWeb.IpnController do
 
   # Pesapal may call via GET (default) or POST depending on registration type.
   def ipn(conn, params) do
+    unless Dunda.Security.Webhook.valid?(conn, :pesapal) do
+      conn
+      |> put_status(:unauthorized)
+      |> json(%{error: %{code: "invalid_webhook_signature"}})
+      |> Plug.Conn.halt()
+    else
     otid = params["OrderTrackingId"] || params["orderTrackingId"]
     ref = params["OrderMerchantReference"] || params["orderMerchantReference"]
     type = params["OrderNotificationType"] || params["orderNotificationType"]
@@ -36,5 +42,6 @@ defmodule DundaWeb.IpnController do
       orderMerchantReference: ref,
       status: status
     })
+    end
   end
 end

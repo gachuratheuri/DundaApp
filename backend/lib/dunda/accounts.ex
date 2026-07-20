@@ -39,10 +39,11 @@ defmodule Dunda.Accounts do
 
       %{provider: "google", uid: "…", email: "…", name: "…", avatar_url: "…"}
 
-  Matches first on `(auth_provider, provider_uid)`, then links by email if an
-  account with that email already exists, otherwise creates a new account.
+  Matches only on `(auth_provider, provider_uid)`. An OAuth identity is never
+  silently linked to an existing password account by email; that would allow a
+  provider-side account compromise to take over a local account.
   """
-  @spec upsert_oauth_user(map()) :: {:ok, User.t()} | {:error, Ecto.Changeset.t()}
+  @spec upsert_oauth_user(map()) :: {:ok, User.t()} | {:error, Ecto.Changeset.t() | atom()}
   def upsert_oauth_user(%{provider: provider, uid: uid} = profile) do
     attrs = %{
       auth_provider: to_string(provider),
@@ -58,7 +59,7 @@ defmodule Dunda.Accounts do
 
       nil ->
         case attrs.email && get_user_by_email(attrs.email) do
-          %User{} = existing -> link_oauth(existing, attrs)
+          %User{} -> {:error, :identity_conflict}
           _ -> create_oauth(attrs)
         end
     end
@@ -68,7 +69,4 @@ defmodule Dunda.Accounts do
     %User{} |> User.oauth_changeset(attrs) |> Repo.insert()
   end
 
-  defp link_oauth(user, attrs) do
-    user |> User.oauth_changeset(attrs) |> Repo.update()
-  end
 end

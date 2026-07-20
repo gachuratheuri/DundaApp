@@ -1,92 +1,33 @@
 defmodule DundaWeb.CheckoutController do
   use DundaWeb, :controller
+  alias Dunda.Checkout
 
-  alias Dunda.Events
-  alias Dunda.Events.Event
-  alias Dunda.Payments
+  def quote(conn, params) do
+    if Dunda.Containment.blocked?(:checkout), do: DundaWeb.ContainmentController.disabled(conn, params), else:
+      case Checkout.create_quote(conn.assigns.current_user.id, params) do
+        {:ok, quote} -> json(conn, %{data: %{quote_id: quote.id, signature: quote.signature, quantity: quote.quantity, unit_price_cents: quote.unit_price_cents, total_cents: quote.total_cents, currency: quote.currency, expires_at: quote.expires_at}})
+        {:error, reason} -> error(conn, reason)
+      end
+  end
 
-  @doc """
-  POST /api/checkout
-
-  Body: `{ "event_id": "1", "user_id": "u_123", "phone": "0712345678", "quantity": 2 }`
-
-  Reserves inventory and initiates an M-Pesa STK push. Returns the
-  `transaction_id` the client should poll / await a push notification on.
-  """
   def create(conn, params) do
-    with {:ok, attrs} <- validate(params),
-         %Event{} = event <- fetch_event(attrs.event_id),
-         amount <- div(event.price_cents, 100) * attrs.quantity,
-         {:ok, transaction_id} <-
-           Payments.checkout(%{
-             tier_id: attrs.event_id,
-             user_id: attrs.user_id,
-             quantity: attrs.quantity,
-             phone: attrs.phone,
-             amount: amount
-           }) do
-      conn
-      |> put_status(:accepted)
-      |> json(%{data: %{transaction_id: transaction_id, status: "pending", amount: amount}})
+    if Dunda.Containment.blocked?(:checkout), do: DundaWeb.ContainmentController.disabled(conn, params), else:
+      key = List.first(get_req_header(conn, "idempotency-key")) || params["idempotency_key"]
+      attrs = Map.put(params, "idempotency_key", key)
+      case Checkout.create_payment_intent(conn.assigns.current_user.id, attrs) do
+        {:ok, intent} -> conn |> put_status(:accepted) |> json(%{data: %{payment_intent_id: intent.id, state: intent.state, amount_cents: intent.amount_cents, currency: intent.currency, redirect_url: intent.redirect_url}})
+        {:error, reason} -> error(conn, reason)
+      end
+  end
+
+  def status(conn, %{"id" => id}) do
+    case Checkout.get_payment_intent_for_user(id, conn.assigns.current_user.id) do
+      nil -> error(conn, :payment_intent_not_found)
+      intent -> json(conn, %{data: %{payment_intent_id: intent.id, state: intent.state, amount_cents: intent.amount_cents, currency: intent.currency, provider_checkout_id: intent.provider_checkout_id}})
     end
   end
 
-  @doc """
-  GET /api/checkout/:id/status
-
-  Polls the status of an M-Pesa STK push checkout.
-  """
-  def status(conn, %{"id" => transaction_id}) do
-    cond do
-      Dunda.Ledger.settled?(transaction_id) ->
-        json(conn, %{data: %{status: "success"}})
-
-      horde_registry_lookup_active?(transaction_id) ->
-        json(conn, %{data: %{status: "pending"}})
-
-      true ->
-        json(conn, %{data: %{status: "failure"}})
-    end
-  end
-
-  defp horde_registry_lookup_active?(transaction_id) do
-    case Horde.Registry.lookup(Dunda.Payments.TransactionRegistry, transaction_id) do
-      [_ | _] -> true
-      [] -> false
-    end
-  end
-
-  defp validate(params) do
-    with {:ok, event_id} <- require(params, "event_id"),
-         {:ok, user_id} <- require(params, "user_id"),
-         {:ok, phone} <- require(params, "phone") do
-      quantity = parse_quantity(params["quantity"])
-      {:ok, %{event_id: event_id, user_id: user_id, phone: phone, quantity: quantity}}
-    end
-  end
-
-  defp fetch_event(event_id) do
-    case Events.get_event(event_id) do
-      nil -> {:error, :not_found}
-      event -> event
-    end
-  end
-
-  defp require(params, key) do
-    case params[key] do
-      value when is_binary(value) and value != "" -> {:ok, value}
-      _ -> {:error, :unprocessable_entity}
-    end
-  end
-
-  defp parse_quantity(q) when is_integer(q) and q > 0, do: q
-
-  defp parse_quantity(q) when is_binary(q) do
-    case Integer.parse(q) do
-      {n, _rest} when n > 0 -> n
-      _ -> 1
-    end
-  end
-
-  defp parse_quantity(_), do: 1
+  defp error(conn, :phase_0_containment), do: DundaWeb.ContainmentController.disabled(conn, %{})
+  defp error(conn, :payment_intent_not_found), do: conn |> put_status(:not_found) |> json(%{error: %{code: "payment_intent_not_found"}})
+  defp error(conn, reason), do: conn |> put_status(:unprocessable_entity) |> json(%{error: %{code: to_string(reason)}})
 end

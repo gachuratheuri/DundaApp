@@ -7,6 +7,11 @@ metadata:
     app: dunda-api
 spec:
   replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       app: dunda-api
@@ -15,15 +20,66 @@ spec:
       labels:
         app: dunda-api
     spec:
+      subdomain: dunda-api-headless
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            app: dunda-api
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+                  app: dunda-api
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
       containers:
       - name: dunda-api
-        image: dundaregistry.azurecr.io/dunda-api:latest
-        imagePullPolicy: Always
+        # CI/CD must replace this sentinel with the signed immutable digest.
+        image: dundaregistry.azurecr.io/dunda-api@sha256:REPLACE_WITH_SIGNED_DIGEST
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
         ports:
         - containerPort: 4000
           name: http
         - containerPort: 4369
           name: epmd
+        - containerPort: 9100
+          name: beam-dist
+        env:
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: RELEASE_DISTRIBUTION
+          value: "name"
+        - name: RELEASE_NODE
+          value: "dunda@$(POD_IP)"
+        - name: ERL_AFLAGS
+          value: "-kernel inet_dist_listen_min 9100 inet_dist_listen_max 9100"
+        - name: ERLANG_COOKIE
+          valueFrom:
+            secretKeyRef:
+              name: dunda-secrets
+              key: erlang-cookie
         envFrom:
         - configMapRef:
             name: dunda-config
@@ -31,20 +87,73 @@ spec:
             name: dunda-secrets
         resources:
           requests:
-            cpu: 250m
+            cpu: 500m
             memory: 512Mi
           limits:
-            cpu: 500m
+            cpu: 2
             memory: 1Gi
+        startupProbe:
+          httpGet:
+            path: /livez
+            port: http
+          periodSeconds: 5
+          failureThreshold: 24
         livenessProbe:
           httpGet:
-            path: /healthz
+            path: /livez
             port: http
-          initialDelaySeconds: 15
-          periodSeconds: 10
+          periodSeconds: 20
+          timeoutSeconds: 2
+          failureThreshold: 3
         readinessProbe:
           httpGet:
-            path: /healthz
+            path: /readyz
             port: http
-          initialDelaySeconds: 10
-          periodSeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 2
+          failureThreshold: 3
+        lifecycle:
+          preStop:
+            exec:
+              command: ["/bin/sh", "-c", "touch /tmp/dunda-draining && sleep 20"]
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dunda-api-headless
+  namespace: default
+  labels:
+    app: dunda-api
+spec:
+  clusterIP: None
+  selector:
+    app: dunda-api
+  ports:
+    - name: epmd
+      port: 4369
+      targetPort: 4369
+    - name: http
+      port: 4000
+      targetPort: 4000
+    - name: beam-dist
+      port: 9100
+      targetPort: 9100
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: dunda-api-pdb
+  namespace: default
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: dunda-api

@@ -1,5 +1,13 @@
 import Config
 
+config :dunda, :containment_mode, true
+config :dunda, :environment, "non-production"
+config :dunda, :otp_secret, "dev-only-otp-secret-change-before-use"
+config :dunda, :webhook_secrets, daraja: "dev-daraja-webhook-secret", pesapal: "dev-pesapal-webhook-secret"
+config :dunda, :metrics_token, "dev-metrics-token"
+config :dunda, :secure_cookies, false
+config :dunda, :phase4_gate_enforced, false
+
 # ── Local Postgres (primary + replica point at the same DB in dev) ────────────
 config :dunda, Dunda.Repo,
   username: System.get_env("PGUSER", "postgres"),

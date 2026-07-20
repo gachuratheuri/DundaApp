@@ -3,9 +3,13 @@ defmodule DundaWeb.Organiser.EventsLive do
 
   @impl true
   def mount(_params, _session, socket) do
+    organisation_ids =
+      Dunda.Organisations.list_organisations_for_user(socket.assigns.current_organiser.id)
+      |> Enum.map(& &1.id)
+
     events =
       try do
-        Dunda.Events.list_events()
+        Dunda.Events.list_events_for_organisations(organisation_ids)
       rescue
         _ -> []
       end

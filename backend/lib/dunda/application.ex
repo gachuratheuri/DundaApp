@@ -27,7 +27,8 @@ defmodule Dunda.Application do
         Dunda.Vault,
         Dunda.Repo,
         Dunda.ReadRepo,
-        {Redix, name: :redix, host: System.get_env("REDIS_HOST", "localhost")},
+        Dunda.Observability,
+        {Redix, Application.get_env(:dunda, :redis, []) |> Keyword.put(:name, :redix)},
         {Cluster.Supervisor, [topologies, [name: Dunda.ClusterSupervisor]]},
         {Horde.Registry, [name: Dunda.InventoryRegistry, keys: :unique, members: :auto]},
         {Horde.DynamicSupervisor,
@@ -37,8 +38,9 @@ defmodule Dunda.Application do
         [
           # Scraper Bloom pre-filter — must exist before Oban runs ingest jobs.
           Dunda.Scraper.Dedup,
+          {Phoenix.PubSub, name: Dunda.PubSub},
           DundaWeb.Endpoint,
-          {Oban, Application.fetch_env!(:dunda, Oban)}
+          Supervisor.child_spec({Oban, Application.fetch_env!(:dunda, Oban)}, shutdown: 30_000)
         ]
 
     opts = [strategy: :one_for_one, name: Dunda.Supervisor]

@@ -1,5 +1,23 @@
 import Config
 
+# Tests use isolated sandbox adapters; production-like environments remain in
+# emergency containment. No test configuration may be reused for deployment.
+config :dunda, :containment_mode, false
+config :dunda, :environment, "test"
+config :dunda, :otp_secret, "test-only-otp-secret"
+config :dunda, :webhook_secrets, daraja: "test-daraja-webhook-secret", pesapal: "test-pesapal-webhook-secret"
+config :dunda, :metrics_token, "test-metrics-token"
+config :dunda, :secure_cookies, false
+config :dunda, :phase4_gate_enforced, false
+config :dunda, :step_up_secret, "test-step-up-secret"
+config :dunda, :quote_signing_secret, "test-quote-secret"
+config :dunda, :checkout_provider, :pesapal
+config :dunda, :inventory_authority, :redis_legacy
+config :dunda, :redis_role, :transactional_legacy
+config :dunda, :scanner_manifest_private_key, "nWGxne/9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2A="
+config :dunda, :scanner_manifest_public_key, "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
+config :dunda, :scanner_manifest_key_id, "manifest-test-v1"
+
 config :dunda, Dunda.Repo,
   username: System.get_env("PGUSER", "postgres"),
   password: System.get_env("PGPASSWORD", "postgres"),
@@ -41,6 +59,6 @@ config :dunda, DundaWeb.Endpoint,
   server: false
 
 # Disable Oban job execution during tests; jobs are asserted via Oban.Testing.
-config :dunda, Oban, testing: :inline
+config :dunda, Oban, testing: :inline, plugins: []
 
 config :logger, level: :warning

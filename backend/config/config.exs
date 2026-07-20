@@ -2,24 +2,56 @@ import Config
 
 config :dunda, ecto_repos: [Dunda.Repo, Dunda.ReadRepo]
 
+# Emergency containment is intentionally enabled by default. Phase 4 adds a
+# second persisted approval gate, so changing this flag alone cannot activate
+# payment, payout, resale, weak-authentication, or scraping paths.
+config :dunda, :containment_mode, true
+config :dunda, :portal_admin_emails, []
+config :dunda, :portal_admin_user_ids, []
+config :dunda, :environment, "non-production"
+config :dunda, :google_client_id, nil
+config :dunda, :scraper_allowed_hosts, []
+config :dunda, :scraper_require_allowlist, false
+config :dunda, :redis, host: "localhost", port: 6379
+config :dunda, :redis_role, :projection
+config :dunda, :inventory_authority, :postgres
+config :dunda, :webhook_secrets, daraja: nil, pesapal: nil
+config :dunda, :metrics_token, nil
+config :dunda, :secure_cookies, true
+config :dunda, :phase4_gate_enforced, true
+config :dunda, :phase5_slo,
+  error_rate_max: 0.01,
+  average_latency_us_max: 500_000
+config :dunda, :step_up_secret, "dev-only-step-up-secret"
+config :dunda, :quote_signing_secret, "dev-only-quote-secret"
+config :dunda, :checkout_provider, :pesapal
+config :dunda, :max_replica_lag_seconds, 30
+config :dunda, :scraper_require_allowlist, true
+config :dunda, :scraper_allowed_hosts, ["ticketsasa.com", "hustlesasa.com", "mookh.com", "kenyabuzz.com"]
+config :dunda, :scanner_manifest_private_key, "nWGxne/9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2A="
+config :dunda, :scanner_manifest_public_key, "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
+config :dunda, :scanner_manifest_key_id, "manifest-v1"
+
 config :dunda, Oban,
   repo: Dunda.Repo,
   plugins: [
-    Oban.Plugins.Pruner,
-    # Unified cron: scraper fan-out every 30 min, organiser payouts daily 06:00 EAT (03:00 UTC), escrow cleanup every minute.
-    {Oban.Plugins.Cron,
-     crontab: [
-       {"*/30 * * * *", Dunda.Workers.DispatchWorker},
-       {"0 3 * * *", Dunda.Workers.PayoutWorker, args: %{"cron" => true}},
-       {"* * * * *", Dunda.Workers.EscrowReclaimer}
-     ]}
+    # Workers fail closed under Phase 0; these schedules provide the durable
+    # reconciliation cadence required once the release gate is approved.
+    {Oban.Plugins.Cron, crontab: [
+      {"*/1 * * * *", Dunda.Workers.OutboxDispatcherWorker},
+      {"*/1 * * * *", Dunda.Workers.ReservationExpiryWorker},
+      {"*/5 * * * *", Dunda.Workers.InventoryReconciliationWorker},
+      {"*/5 * * * *", Dunda.Workers.PaymentReconciliationWorker},
+      {"0 * * * *", Dunda.Workers.FinancialReconciliationWorker}
+    ]}
   ],
   queues: [
     escrow_cleanup: 10,
     scrape_dispatch: 1,
     scrape_fetch: 4,
     scrape_ingest: 10,
-    payments: 3
+    payments: 3,
+    inventory: 2
   ]
 
 # JSON library used by Ecto/Phoenix-style serialisation.
@@ -30,6 +62,7 @@ config :phoenix, :json_library, Jason
 config :dunda, DundaWeb.Endpoint,
   url: [host: "localhost"],
   adapter: Bandit.PhoenixAdapter,
+  pubsub_server: Dunda.PubSub,
   render_errors: [formats: [json: DundaWeb.ErrorJSON], layout: false],
   live_view: [signing_salt: "dunda_lv_salt_override_in_prod"]
 

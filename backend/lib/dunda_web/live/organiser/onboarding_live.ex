@@ -45,7 +45,7 @@ defmodule DundaWeb.Organiser.OnboardingLive do
       scraper_enabled: false
     }
 
-    case Dunda.Organisations.create_organisation(attrs) do
+    case Dunda.Organisations.create_organisation_for_user(socket.assigns.current_organiser.id, attrs) do
       {:ok, _org} ->
         {:noreply,
          socket

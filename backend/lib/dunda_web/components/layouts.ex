@@ -35,24 +35,31 @@ defmodule DundaWeb.Layouts do
               <div class="flex h-16 items-center justify-between">
                 <div class="flex items-center gap-8">
                   <a href="/portal" class="flex items-center gap-2">
-                    <span class="text-2xl font-black tracking-tighter text-white font-oswald">TIKETA <span class="text-opticyan">PORTAL</span></span>
+                    <span class="text-2xl font-black tracking-tighter text-white font-oswald">DUNDA <span class="text-opticyan">PORTAL</span></span>
                   </a>
-                  <nav class="hidden md:flex space-x-6 text-sm font-semibold uppercase tracking-wider text-gray-400">
-                    <a href="/portal" class="hover:text-white transition-colors">Dashboard</a>
-                    <a href="/portal/events" class="hover:text-white transition-colors">Events</a>
-                    <a href="/portal/analytics" class="hover:text-white transition-colors">Analytics</a>
-                    <a href="/portal/payouts" class="hover:text-white transition-colors">Payouts</a>
-                    <a href="/portal/scraper" class="hover:text-white transition-colors">Scraper</a>
-                    <a href="/portal/team" class="hover:text-white transition-colors">Team</a>
-                    <a href="/portal/support" class="hover:text-white transition-colors">Support</a>
-                    <a href="/portal/health" class="hover:text-white transition-colors">System Health</a>
-                  </nav>
+                  <%= if assigns[:current_organiser] do %>
+                    <nav class="hidden md:flex space-x-6 text-sm font-semibold uppercase tracking-wider text-gray-400">
+                      <a href="/portal" class="hover:text-white transition-colors">Dashboard</a>
+                      <a href="/portal/events" class="hover:text-white transition-colors">Events</a>
+                      <a href="/portal/analytics" class="hover:text-white transition-colors">Analytics</a>
+                      <a href="/portal/payouts" class="hover:text-white transition-colors">Payouts</a>
+                      <a href="/portal/scraper" class="hover:text-white transition-colors">Scraper</a>
+                      <a href="/portal/team" class="hover:text-white transition-colors">Team</a>
+                      <a href="/portal/support" class="hover:text-white transition-colors">Support</a>
+                      <a href="/portal/health" class="hover:text-white transition-colors">System Health</a>
+                    </nav>
+                  <% end %>
                 </div>
                 <div class="flex items-center gap-4">
-                  <span class="inline-flex items-center gap-1.5 rounded-full bg-[#111] px-3 py-1 text-xs font-semibold text-acidgreen border border-acidgreen/20">
-                    <span class="h-2 w-2 rounded-full bg-acidgreen animate-pulse"></span>
-                    Live Context
-                  </span>
+                  <%= if assigns[:current_organiser] do %>
+                    <span class="text-xs text-gray-400 font-bold uppercase"><%= @current_organiser.name %></span>
+                    <.link href={~p"/portal/logout"} method="delete" class="text-xs text-opticyan hover:underline font-bold uppercase">Sign Out</.link>
+                  <% else %>
+                    <span class="inline-flex items-center gap-1.5 rounded-full bg-[#111] px-3 py-1 text-xs font-semibold text-acidgreen border border-acidgreen/20">
+                      <span class="h-2 w-2 rounded-full bg-acidgreen animate-pulse"></span>
+                      Live Context
+                    </span>
+                  <% end %>
                 </div>
               </div>
             </div>

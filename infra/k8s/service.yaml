@@ -13,6 +13,3 @@ spec:
     - name: http
       port: 80
       targetPort: 4000
-    - name: epmd
-      port: 4369
-      targetPort: 4369

@@ -44,12 +44,13 @@ defmodule Dunda.Scraper.Normaliser do
          name when is_binary(name) and name != "" <- raw["title"] do
       %{
         name: name,
-        venue: raw["venue"],
+        venue: raw["venue"] || "TBA",
         starts_at: starts_at,
         price_cents: parse_price_cents(raw["price_text"]),
         capacity: @default_capacity,
         source: "html:#{raw["site"] || html_source}",
-        external_id: to_string(raw["external_id"])
+        external_id: to_string(raw["external_id"]),
+        source_url: safe_source_url(raw["url"])
       }
     else
       _ ->
@@ -63,12 +64,13 @@ defmodule Dunda.Scraper.Normaliser do
     with {:ok, starts_at, _} <- DateTime.from_iso8601(get_in(ev, ["start", "utc"]) || "") do
       %{
         name: name,
-        venue: get_in(ev, ["venue", "name"]),
+        venue: get_in(ev, ["venue", "name"]) || "TBA",
         starts_at: DateTime.truncate(starts_at, :second),
         price_cents: 0,
         capacity: ev["capacity"] || @default_capacity,
         source: "eventbrite",
-        external_id: to_string(id)
+        external_id: to_string(id),
+        source_url: safe_source_url(ev["url"] || get_in(ev, ["url", "html"]))
       }
     else
       _ -> nil
@@ -82,12 +84,13 @@ defmodule Dunda.Scraper.Normaliser do
          {:ok, starts_at, _} <- DateTime.from_iso8601(start_time) do
       %{
         name: name,
-        venue: get_in(ev, ["place", "name"]),
+        venue: get_in(ev, ["place", "name"]) || "TBA",
         starts_at: DateTime.truncate(starts_at, :second),
         price_cents: 0,
         capacity: @default_capacity,
         source: to_string(source),
-        external_id: to_string(id)
+        external_id: to_string(id),
+        source_url: safe_source_url(ev["permalink"] || ev["url"])
       }
     else
       _ -> nil
@@ -133,4 +136,10 @@ defmodule Dunda.Scraper.Normaliser do
   end
 
   defp int(s), do: String.to_integer(s)
+
+  defp safe_source_url(url) when is_binary(url) do
+    url = String.trim(url)
+    if Dunda.Security.URL.safe_https_url?(url), do: url, else: nil
+  end
+  defp safe_source_url(_), do: nil
 end

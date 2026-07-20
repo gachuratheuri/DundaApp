@@ -1,22 +1,44 @@
 defmodule Dunda.Workers.EscrowReclaimer do
+  @moduledoc """
+  Authoritative escrow sweep: any escrow entry whose expiry marker has lapsed
+  (payment neither settled nor explicitly failed) is released back into its
+  pool. Runs per-pool when targeted, or over every tier and event pool on the
+  scheduled sweep. Settled purchases are safe: fulfillment commits (deletes)
+  their escrow entries, so there is nothing left here to reclaim.
+  """
   use Oban.Worker, queue: :escrow_cleanup, max_attempts: 3
 
+  import Ecto.Query, only: [from: 2]
+
+  alias Dunda.Inventory
+
   @impl Oban.Worker
-  def perform(%Oban.Job{args: %{"ticket_tier_id" => tier_id}}) when not is_nil(tier_id) do
-    reclaim_for_tier(tier_id)
+  def perform(%Oban.Job{args: %{"ticket_tier_id" => pool_id}}) when not is_nil(pool_id) do
+    if Dunda.Containment.blocked?(:checkout), do: {:cancel, :phase_0_containment}, else: reclaim_for_pool(pool_id)
   end
 
   def perform(%Oban.Job{args: _}) do
-    # Sweeper sweep: find all events and reclaim for each tier
-    Dunda.Repo.all(Dunda.Events.Event)
-    |> Enum.each(fn event -> reclaim_for_tier(event.id) end)
+    if Dunda.Containment.blocked?(:checkout) do
+      {:cancel, :phase_0_containment}
+    else
+    tier_pools =
+      from(t in Dunda.Ticketing.TicketTier, select: t.id)
+      |> Dunda.Repo.all()
+      |> Enum.map(&Inventory.tier_pool/1)
 
-    :ok
+    event_pools =
+      from(e in Dunda.Events.Event, select: e.id)
+      |> Dunda.Repo.all()
+      |> Enum.map(&Inventory.event_pool/1)
+
+    Enum.each(tier_pools ++ event_pools, &reclaim_for_pool/1)
+
+      :ok
+    end
   end
 
-  defp reclaim_for_tier(tier_id) do
-    escrow_key = "escrow:#{tier_id}"
-    inv_key    = "inventory:#{tier_id}"
+  defp reclaim_for_pool(pool_id) do
+    escrow_key = Inventory.escrow_key(pool_id)
 
     # Fetch all entries in the escrow hash
     case Redix.command(:redix, ["HGETALL", escrow_key]) do
@@ -24,25 +46,26 @@ defmodule Dunda.Workers.EscrowReclaimer do
         entries
         |> Enum.chunk_every(2)
         |> Enum.each(fn
-          [user_id, qty] ->
-            expiry_key = "expiry:#{escrow_key}:#{user_id}"
+          [owner_id, _qty] ->
+            expiry_key = "expiry:#{escrow_key}:#{owner_id}"
+
             case Redix.command(:redix, ["EXISTS", expiry_key]) do
               {:ok, 0} ->
-                # Expiry key gone but escrow entry remains — reclaim atomically
-                reclaim_script = """
-                if redis.call("HEXISTS", KEYS[1], ARGV[1]) == 1 then
-                  redis.call("INCRBY", KEYS[2], ARGV[2])
-                  redis.call("HDEL", KEYS[1], ARGV[1])
-                  return 1
-                end
-                return 0
-                """
-                Redix.command(:redix, ["EVAL", reclaim_script, 2, escrow_key, inv_key, user_id, qty])
-              _ -> :noop
+                # Expiry marker gone but escrow entry remains — the payment
+                # never resolved. Release is atomic and idempotent, and also
+                # clears the buyer's per-user checkout lock.
+                Inventory.release_escrow(pool_id, owner_id)
+
+              _ ->
+                :noop
             end
-          _ -> :noop
+
+          _ ->
+            :noop
         end)
-      _ -> :noop
+
+      _ ->
+        :noop
     end
 
     :ok

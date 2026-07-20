@@ -11,6 +11,8 @@ defmodule Dunda.Payments.MpesaStateMachine do
   """
   use GenStateMachine, callback_mode: :state_functions
 
+  require Logger
+
   alias Dunda.Inventory
   alias Dunda.Ledger
   alias Dunda.Payments.Daraja
@@ -39,12 +41,15 @@ defmodule Dunda.Payments.MpesaStateMachine do
 
   # Transition: idle → awaiting_callback
   def idle(:cast, {:initiate, phone, amount, idempotency_key}, data) do
-    case Daraja.stk_push(phone, amount, idempotency_key) do
+    if Dunda.Containment.blocked?(:checkout) do
+      {:stop, :normal, data}
+    else
+      case Daraja.stk_push(phone, amount, idempotency_key) do
       {:ok, checkout_request_id} ->
         new_data = %{data | checkout_request_id: checkout_request_id}
         # Index this process by CheckoutRequestID so the Daraja callback (which
         # only carries the CheckoutRequestID, not our transaction_id) can route.
-        Dunda.Payments.register_checkout_id(checkout_request_id)
+        Dunda.Payments.register_checkout_id(checkout_request_id, new_data)
         # Schedule the dead-letter poll in case the callback never arrives.
         Process.send_after(self(), :poll_status, @callback_grace_ms)
         {:next_state, :awaiting_callback, new_data}
@@ -52,6 +57,7 @@ defmodule Dunda.Payments.MpesaStateMachine do
       {:error, reason} ->
         release(data)
         {:stop, :normal, Map.put(data, :failure_reason, reason)}
+      end
     end
   end
 
@@ -61,37 +67,62 @@ defmodule Dunda.Payments.MpesaStateMachine do
         {:callback_received, %{"ResultCode" => "0", "MpesaReceiptNumber" => receipt}},
         data
       ) do
-    Ledger.settle(data.transaction_id, receipt)
-    Dunda.Workers.MpesaFulfillmentWorker.enqueue(data.transaction_id, data.ticket_tier_id, data.user_id, data.quantity)
-    {:stop, :normal, Map.put(data, :receipt, receipt)}
+    if Dunda.Containment.blocked?(:mpesa_callbacks) do
+      {:stop, :normal, data}
+    else
+      case Ledger.settle(data.transaction_id, receipt) do
+        {:ok, _entry} ->
+          Dunda.Workers.MpesaFulfillmentWorker.enqueue(data.transaction_id, data.ticket_tier_id, data.user_id, data.quantity)
+          Redix.command(:redix, ["DEL", "checkout_request:#{data.checkout_request_id}"])
+          {:stop, :normal, Map.put(data, :receipt, receipt)}
+
+        {:error, reason} ->
+          Logger.error("M-Pesa settlement rejected for #{data.transaction_id}: #{inspect(reason)}")
+          {:stop, :normal, Map.put(data, :failure_reason, reason)}
+      end
+    end
   end
 
   # Transition: awaiting_callback → failed (explicit failure callback)
   def awaiting_callback(:cast, {:callback_received, %{"ResultCode" => code}}, data)
       when code != "0" do
-    release(data)
-    {:stop, :normal, Map.put(data, :failure_code, code)}
+    if Dunda.Containment.blocked?(:mpesa_callbacks) do
+      {:stop, :normal, data}
+    else
+      release(data)
+      Redix.command(:redix, ["DEL", "checkout_request:#{data.checkout_request_id}"])
+      {:stop, :normal, Map.put(data, :failure_code, code)}
+    end
   end
 
   # Dead-letter poll trigger
   def awaiting_callback(:info, :poll_status, data) do
-    handle_poll(data)
+    if Dunda.Containment.blocked?(:checkout), do: {:stop, :normal, data}, else: handle_poll(data)
   end
 
   defp handle_poll(%{retry_count: count, max_poll_retries: max} = data) when count >= max do
     release(data)
+    Redix.command(:redix, ["DEL", "checkout_request:#{data.checkout_request_id}"])
     {:stop, :normal, Map.put(data, :failure_reason, :poll_exhausted)}
   end
 
   defp handle_poll(data) do
     case Daraja.query_status(data.checkout_request_id) do
       {:ok, %{"ResultCode" => "0"} = result} ->
-        Ledger.settle(data.transaction_id, result["MpesaReceiptNumber"])
-        Dunda.Workers.MpesaFulfillmentWorker.enqueue(data.transaction_id, data.ticket_tier_id, data.user_id, data.quantity)
-        {:stop, :normal, data}
+        case Ledger.settle(data.transaction_id, result["MpesaReceiptNumber"]) do
+          {:ok, _entry} ->
+            Dunda.Workers.MpesaFulfillmentWorker.enqueue(data.transaction_id, data.ticket_tier_id, data.user_id, data.quantity)
+            Redix.command(:redix, ["DEL", "checkout_request:#{data.checkout_request_id}"])
+            {:stop, :normal, data}
+
+          {:error, reason} ->
+            Logger.error("M-Pesa poll settlement rejected for #{data.transaction_id}: #{inspect(reason)}")
+            {:stop, :normal, Map.put(data, :failure_reason, reason)}
+        end
 
       {:ok, %{"ResultCode" => code}} when code != "0" ->
         release(data)
+        Redix.command(:redix, ["DEL", "checkout_request:#{data.checkout_request_id}"])
         {:stop, :normal, Map.put(data, :failure_code, code)}
 
       {:error, :pending} ->
@@ -100,7 +131,7 @@ defmodule Dunda.Payments.MpesaStateMachine do
     end
   end
 
-  defp release(%{ticket_tier_id: tier_id, user_id: user_id}) do
-    Inventory.release_escrow(tier_id, user_id)
+  defp release(%{ticket_tier_id: tier_id, transaction_id: transaction_id}) do
+    Inventory.release_escrow(tier_id, transaction_id)
   end
 end

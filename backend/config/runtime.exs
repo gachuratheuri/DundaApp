@@ -1,6 +1,60 @@
 import Config
 
 if config_env() == :prod do
+  # Phase 0 is fail-closed in release builds. The operator may request the
+  # containment flag to be lifted only after the reviewed exit criteria pass;
+  # the independent persisted Phase 4 approval gate still denies every guarded
+  # feature when approvals are absent, expired, revoked, or inconsistent.
+  release_requested =
+    System.get_env("DUNDA_CONTAINMENT_MODE", "true")
+    |> String.trim()
+    |> String.downcase()
+    |> then(&(&1 in ~w(false 0 no)))
+
+  config :dunda, :containment_mode, not release_requested
+  config :dunda, :phase4_gate_enforced, true
+  config :dunda, :step_up_secret, System.fetch_env!("STEP_UP_SECRET")
+  config :dunda, :quote_signing_secret, System.fetch_env!("QUOTE_SIGNING_SECRET")
+  config :dunda, :checkout_provider, System.get_env("CHECKOUT_PROVIDER", "pesapal") |> String.to_atom()
+  config :dunda, :max_replica_lag_seconds, String.to_integer(System.get_env("MAX_REPLICA_LAG_SECONDS", "30"))
+  config :dunda, :scraper_require_allowlist, System.get_env("SCRAPER_REQUIRE_ALLOWLIST", "true") == "true"
+  config :dunda, :scraper_allowed_hosts, System.get_env("SCRAPER_ALLOWED_HOSTS", "") |> String.split(",", trim: true)
+  config :dunda, :scanner_manifest_private_key, System.fetch_env!("SCANNER_MANIFEST_PRIVATE_KEY")
+  config :dunda, :scanner_manifest_public_key, System.fetch_env!("SCANNER_MANIFEST_PUBLIC_KEY")
+  config :dunda, :scanner_manifest_key_id, System.get_env("SCANNER_MANIFEST_KEY_ID", "manifest-v1")
+  config :dunda, :environment, "non-production"
+  config :dunda, :google_client_id, System.get_env("GOOGLE_CLIENT_ID")
+  config :dunda, :otp_secret, System.fetch_env!("OTP_HMAC_SECRET")
+  config :dunda, :metrics_token, System.fetch_env!("METRICS_TOKEN")
+  config :dunda, :webhook_secrets,
+    daraja: System.fetch_env!("DARAJA_CALLBACK_SECRET"),
+    pesapal: System.fetch_env!("PESAPAL_IPN_SECRET")
+  redis_opts = [
+    host: System.get_env("REDIS_HOST", "localhost"),
+    port: String.to_integer(System.get_env("REDIS_PORT", "6379")),
+    password: System.fetch_env!("REDIS_PASSWORD")
+  ]
+
+  redis_opts =
+    if System.get_env("REDIS_TLS", "true") == "true" do
+      Keyword.merge(redis_opts,
+        transport: :ssl,
+        socket_opts: [verify: :verify_peer, cacertfile: System.fetch_env!("REDIS_CA_CERTFILE")]
+      )
+    else
+      redis_opts
+    end
+
+  config :dunda, :redis, redis_opts
+  config :dunda, :redis_role, :projection
+  config :kernel, inet_dist_listen_min: 9100, inet_dist_listen_max: 9100
+  config :dunda, :inventory_authority,
+    case System.get_env("INVENTORY_AUTHORITY", "postgres") do
+      "postgres" -> :postgres
+      "redis_legacy" -> :redis_legacy
+      other -> raise "unsupported INVENTORY_AUTHORITY=#{other}; use postgres or explicitly gated redis_legacy"
+    end
+
   config :dunda, DundaWeb.Endpoint,
     server: true,
     http: [ip: {0, 0, 0, 0}, port: String.to_integer(System.get_env("PORT", "4000"))],

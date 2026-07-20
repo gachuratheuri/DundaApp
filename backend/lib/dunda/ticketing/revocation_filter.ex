@@ -40,13 +40,21 @@ defmodule Dunda.Ticketing.RevocationFilter do
   @spec remove(t(), String.t()) :: :ok
   def remove(%__MODULE__{} = filter, item) do
     for index <- hash_indices(filter, item) do
-      # Ensure we don't decrement below 0 (prevent underflow)
-      current = :atomics.get(filter.ref, index)
-      if current > 0 do
-        :atomics.sub(filter.ref, index, 1)
-      end
+      decrement_counter(filter.ref, index)
     end
     :ok
+  end
+
+  defp decrement_counter(ref, index) do
+    current = :atomics.get(ref, index)
+    if current > 0 do
+      case :atomics.compare_exchange(ref, index, current, current - 1) do
+        ^current -> :ok
+        _expected_value_changed -> decrement_counter(ref, index)
+      end
+    else
+      :ok
+    end
   end
 
   @doc "Checks if an item is possibly in the set."

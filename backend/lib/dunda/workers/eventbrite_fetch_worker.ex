@@ -11,11 +11,15 @@ defmodule Dunda.Workers.EventbriteFetchWorker do
   require Logger
 
   alias Dunda.Workers.IngestWorker
+  alias Dunda.Scraper.SchemaGuard
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"opts" => %{"eventbrite_org_id" => ebo_id}} = args}) do
     org_id = args["organisation_id"]
 
+    if Dunda.Containment.blocked?(:dynamic_scraping) do
+      {:cancel, :phase_0_containment}
+    else
     case token() do
       nil ->
         Logger.info("EventbriteFetchWorker: EVENTBRITE_TOKEN unset — skipping org #{org_id}")
@@ -30,12 +34,14 @@ defmodule Dunda.Workers.EventbriteFetchWorker do
                max_retries: 0,
                receive_timeout: 15_000
              ) do
-          {:ok, %{status: 200, body: %{"events" => events}}} when is_list(events) ->
-            IngestWorker.enqueue(events, "eventbrite", org_id)
-            :ok
-
-          {:ok, %{status: 200}} ->
-            :ok
+          {:ok, %{status: 200, body: body}} ->
+            case SchemaGuard.api_events("eventbrite", body) do
+              {:ok, events} ->
+                if events == [], do: SchemaGuard.report_empty("eventbrite", ebo_id)
+                IngestWorker.enqueue(events, "eventbrite", org_id)
+                :ok
+              {:schema_drift, reason} -> {:error, reason}
+            end
 
           {:ok, %{status: status}} ->
             {:error, {:http_status, status}}
@@ -44,6 +50,7 @@ defmodule Dunda.Workers.EventbriteFetchWorker do
             Logger.warning("EventbriteFetchWorker org #{org_id} failed: #{inspect(reason)}")
             {:error, reason}
         end
+    end
     end
   end
 
