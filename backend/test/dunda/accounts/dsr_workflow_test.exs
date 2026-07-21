@@ -28,7 +28,9 @@ defmodule Dunda.Accounts.DsrWorkflowTest do
       user = insert_user!()
       request = insert_request!(user, "rectification")
 
-      assert {:ok, updated} = Privacy.process_rectification(user.id, request.id, %{"name" => "New Name"})
+      assert {:ok, updated} =
+               Privacy.process_rectification(user.id, request.id, %{"name" => "New Name"})
+
       assert updated.status == "completed"
       assert %DateTime{} = updated.completed_at
 
@@ -40,14 +42,16 @@ defmodule Dunda.Accounts.DsrWorkflowTest do
       other = insert_user!()
       request = insert_request!(owner, "rectification")
 
-      assert {:error, :not_found} = Privacy.process_rectification(other.id, request.id, %{"name" => "Hijacked"})
+      assert {:error, :not_found} =
+               Privacy.process_rectification(other.id, request.id, %{"name" => "Hijacked"})
     end
 
     test "rejects processing through the wrong request type" do
       user = insert_user!()
       request = insert_request!(user, "access")
 
-      assert {:error, :wrong_request_type} = Privacy.process_rectification(user.id, request.id, %{"name" => "x"})
+      assert {:error, :wrong_request_type} =
+               Privacy.process_rectification(user.id, request.id, %{"name" => "x"})
     end
   end
 
@@ -56,7 +60,9 @@ defmodule Dunda.Accounts.DsrWorkflowTest do
       user = insert_user!()
       request = insert_request!(user, "objection")
 
-      assert {:ok, updated} = Privacy.record_objection(user.id, request.id, "marketing notifications")
+      assert {:ok, updated} =
+               Privacy.record_objection(user.id, request.id, "marketing notifications")
+
       assert updated.status == "in_progress"
       assert updated.notes =~ "marketing notifications"
       assert Repo.get!(User, user.id).id == user.id

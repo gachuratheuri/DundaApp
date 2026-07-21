@@ -5,7 +5,7 @@ defmodule DundaWeb.Plugs.AuthPlug do
   If invalid or missing, halts with a 401 Unauthorized response.
   """
   import Plug.Conn
-  import Phoenix.Controller, only: [put_view: 2, render: 3]
+  import Phoenix.Controller, only: [put_view: 2, render: 2]
 
   alias Dunda.Accounts
   alias DundaWeb.Auth.Token

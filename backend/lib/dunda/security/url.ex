@@ -1,5 +1,5 @@
 defmodule Dunda.Security.URL do
-  @moduledoc """SSRF-resistant validation for organiser-controlled HTTP targets."""
+  @moduledoc "SSRF-resistant validation for organiser-controlled HTTP targets."
   import Bitwise, only: [&&&: 2]
 
   @max_body_bytes 5_000_000
@@ -12,6 +12,7 @@ defmodule Dunda.Security.URL do
       %URI{scheme: "https", host: host, userinfo: nil, port: port}
       when is_binary(host) and (is_nil(port) or port == 443) ->
         host = String.downcase(host)
+
         host not in ["localhost", "metadata.google.internal"] and not private_host?(host) and
           allowed_host?(host)
 
@@ -25,6 +26,21 @@ defmodule Dunda.Security.URL do
   @spec max_body_bytes() :: pos_integer()
   def max_body_bytes, do: @max_body_bytes
 
+  @doc "Returns a query- and credential-free URL suitable for diagnostics."
+  def log_safe(url) when is_binary(url) do
+    case URI.parse(url) do
+      %URI{scheme: scheme, host: host} = uri when is_binary(scheme) and is_binary(host) ->
+        URI.to_string(%{uri | userinfo: nil, query: nil, fragment: nil})
+
+      _ ->
+        "[invalid-url]"
+    end
+  rescue
+    _ -> "[invalid-url]"
+  end
+
+  def log_safe(_), do: "[invalid-url]"
+
   @doc "Fetches an HTTPS resource with bounded redirects and re-validation."
   def fetch(url, opts \\ []) do
     timeout = Keyword.get(opts, :receive_timeout, 15_000)
@@ -35,13 +51,23 @@ defmodule Dunda.Security.URL do
     if not safe_https_url?(url) do
       {:error, :unsafe_url}
     else
-      case Req.get(url, max_retries: 0, receive_timeout: timeout, decode_body: false, redirect: false) do
+      case Req.get(url,
+             max_retries: 0,
+             receive_timeout: timeout,
+             decode_body: false,
+             redirect: false
+           ) do
         {:ok, %{status: status, headers: headers}} when status in 300..399 ->
           case header(headers, "location") do
-            nil -> {:error, :redirect_without_location}
+            nil ->
+              {:error, :redirect_without_location}
+
             location ->
               next_url = URI.merge(url, location) |> URI.to_string()
-              if redirects == @max_redirects, do: {:error, :too_many_redirects}, else: do_fetch(next_url, timeout, redirects + 1)
+
+              if redirects == @max_redirects,
+                do: {:error, :too_many_redirects},
+                else: do_fetch(next_url, timeout, redirects + 1)
           end
 
         {:ok, %{status: 200, headers: headers, body: body}} ->
@@ -51,30 +77,40 @@ defmodule Dunda.Security.URL do
             true -> {:error, :response_too_large}
           end
 
-        {:ok, %{status: 200, body: body}} when is_binary(body) and byte_size(body) <= @max_body_bytes -> {:ok, body}
-        {:ok, %{status: 200}} -> {:error, :response_too_large}
-        {:ok, %{status: status}} -> {:error, {:http_status, status}}
-        {:error, reason} -> {:error, reason}
+        {:ok, %{status: 200, body: body}}
+        when is_binary(body) and byte_size(body) <= @max_body_bytes ->
+          {:ok, body}
+
+        {:ok, %{status: 200}} ->
+          {:error, :response_too_large}
+
+        {:ok, %{status: status}} ->
+          {:error, {:http_status, status}}
+
+        {:error, reason} ->
+          {:error, reason}
       end
     end
   end
 
   defp do_fetch(_url, _timeout, _redirects), do: {:error, :too_many_redirects}
 
-  defp header(headers, name) when is_list(headers) do
-    Enum.find_value(headers, fn
-      {key, value} when is_binary(key) -> if String.downcase(key) == name, do: value
-      _ -> nil
-    end)
-  end
-
-  defp header(headers, name) when is_map(headers), do: Map.get(headers, name) || Map.get(headers, String.downcase(name))
+  defp header(headers, name) when is_map(headers),
+    do: Map.get(headers, name) || Map.get(headers, String.downcase(name))
 
   defp body_size_header(headers) do
     case header(headers, "content-length") do
-      value when is_binary(value) -> case Integer.parse(value) do {size, ""} -> size; _ -> 0 end
-      value when is_integer(value) -> value
-      _ -> 0
+      value when is_binary(value) ->
+        case Integer.parse(value) do
+          {size, ""} -> size
+          _ -> 0
+        end
+
+      value when is_integer(value) ->
+        value
+
+      _ ->
+        0
     end
   end
 

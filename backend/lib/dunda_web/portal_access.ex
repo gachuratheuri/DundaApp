@@ -1,5 +1,5 @@
 defmodule DundaWeb.PortalAccess do
-  @moduledoc """Temporary fail-closed allow-list for the organiser portal."""
+  @moduledoc "Temporary fail-closed allow-list for the organiser portal."
 
   @spec allowed?(term()) :: boolean()
   def allowed?(user) do
@@ -11,7 +11,10 @@ defmodule DundaWeb.PortalAccess do
   end
 
   defp membership_access?(%{id: user_id}) when not is_nil(user_id) do
-    Dunda.Organisations.list_organisations_for_user(user_id) != []
+    Dunda.Organisations.list_organisations_for_user(
+      user_id,
+      Dunda.Organisations.portal_roles()
+    ) != []
   rescue
     _ -> false
   end

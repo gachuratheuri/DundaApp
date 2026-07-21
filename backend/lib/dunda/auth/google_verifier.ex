@@ -10,7 +10,7 @@ defmodule Dunda.Auth.GoogleVerifier do
   @google_tokeninfo "https://oauth2.googleapis.com/tokeninfo"
 
   @spec verify(String.t()) :: {:ok, map()} | {:error, atom()}
-  def verify(token) when is_binary(token) and byte_size(token) <= 4096 do
+  def verify(token) when is_binary(token) and byte_size(token) in 1..4096 do
     with {:ok, %{status: 200, body: claims}} <-
            Req.get(@google_tokeninfo,
              params: [id_token: token],

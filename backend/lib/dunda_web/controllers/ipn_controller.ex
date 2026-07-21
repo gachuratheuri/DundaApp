@@ -21,28 +21,31 @@ defmodule DundaWeb.IpnController do
       |> json(%{error: %{code: "invalid_webhook_signature"}})
       |> Plug.Conn.halt()
     else
-    otid = params["OrderTrackingId"] || params["orderTrackingId"]
-    ref = params["OrderMerchantReference"] || params["orderMerchantReference"]
-    type = params["OrderNotificationType"] || params["orderNotificationType"]
-    Logger.metadata(order_tracking_id: otid, merchant_reference: ref)
+      otid = params["OrderTrackingId"] || params["orderTrackingId"]
+      ref = params["OrderMerchantReference"] || params["orderMerchantReference"]
+      type = params["OrderNotificationType"] || params["orderNotificationType"]
+      Logger.metadata(order_tracking_id: otid, merchant_reference: ref)
 
-    status =
-      case otid do
-        nil ->
-          Logger.warning("IPN received without OrderTrackingId: #{inspect(params)}")
-          500
+      status =
+        case otid do
+          nil ->
+            Logger.warning(
+              "IPN received without OrderTrackingId: #{inspect(Dunda.Logging.Redactor.redact(params))}"
+            )
 
-        _ ->
-          IpnVerificationWorker.enqueue(otid)
-          200
-      end
+            500
 
-    json(conn, %{
-      orderNotificationType: type,
-      orderTrackingId: otid,
-      orderMerchantReference: ref,
-      status: status
-    })
+          _ ->
+            IpnVerificationWorker.enqueue(otid)
+            200
+        end
+
+      json(conn, %{
+        orderNotificationType: type,
+        orderTrackingId: otid,
+        orderMerchantReference: ref,
+        status: status
+      })
     end
   end
 end

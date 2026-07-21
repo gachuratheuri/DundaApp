@@ -19,7 +19,11 @@ defmodule DundaWeb.AuthController do
 
     case Accounts.register_user(attrs) do
       {:ok, user} ->
-        _ = Dunda.Audit.record_from_conn(conn, "auth.register", "user", user.id, %{provider: "email"})
+        _ =
+          Dunda.Audit.record_from_conn(conn, "auth.register", "user", user.id, %{
+            provider: "email"
+          })
+
         token = Token.sign(user)
         render(conn, :auth_success, user: user, token: token)
 
@@ -39,7 +43,9 @@ defmodule DundaWeb.AuthController do
   def login(conn, %{"email" => email, "password" => password}) do
     case Accounts.get_user_by_email_and_password(email, password) do
       %Accounts.User{} = user ->
-        _ = Dunda.Audit.record_from_conn(conn, "auth.login", "user", user.id, %{provider: "email"})
+        _ =
+          Dunda.Audit.record_from_conn(conn, "auth.login", "user", user.id, %{provider: "email"})
+
         token = Token.sign(user)
         render(conn, :auth_success, user: user, token: token)
 
@@ -59,7 +65,9 @@ defmodule DundaWeb.AuthController do
   """
   def send_otp(conn, %{"phone" => phone}) do
     case OTP.send_code(phone) do
-      :ok -> json(conn, %{success: true, message: "If the number is eligible, a code was sent."})
+      :ok ->
+        json(conn, %{success: true, message: "If the number is eligible, a code was sent."})
+
       {:error, _} ->
         conn
         |> put_status(:service_unavailable)
@@ -75,26 +83,37 @@ defmodule DundaWeb.AuthController do
   def verify_otp(conn, %{"phone" => phone, "otp" => otp}) do
     case OTP.verify_code(phone, otp) do
       :ok ->
-      # Upsert phone-based user
-      case Accounts.upsert_oauth_user(%{provider: "phone", uid: phone, email: "#{phone}@dunda.app", name: "Guest User", avatar_url: nil}) do
-        {:ok, user} ->
-          _ = Dunda.Audit.record_from_conn(conn, "auth.otp_verified", "user", user.id, %{provider: "phone"})
-          token = Token.sign(user)
-          render(conn, :auth_success, user: user, token: token)
-        {:error, :identity_conflict} ->
-          conn |> put_status(:conflict) |> json(%{error: %{code: "identity_conflict"}})
-        {:error, changeset} ->
-          conn
-          |> put_status(:unprocessable_entity)
-          |> put_view(json: DundaWeb.ErrorJSON)
-          |> render(:"422", changeset: changeset)
-      end
-      end
+        # Upsert phone-based user
+        case Accounts.upsert_oauth_user(%{
+               provider: "phone",
+               uid: phone,
+               email: "#{phone}@dunda.app",
+               name: "Guest User",
+               avatar_url: nil
+             }) do
+          {:ok, user} ->
+            _ =
+              Dunda.Audit.record_from_conn(conn, "auth.otp_verified", "user", user.id, %{
+                provider: "phone"
+              })
 
-    {:error, _} ->
-      conn
-      |> put_status(:unauthorized)
-      |> json(%{error: "Invalid OTP"})
+            token = Token.sign(user)
+            render(conn, :auth_success, user: user, token: token)
+
+          {:error, :identity_conflict} ->
+            conn |> put_status(:conflict) |> json(%{error: %{code: "identity_conflict"}})
+
+          {:error, changeset} ->
+            conn
+            |> put_status(:unprocessable_entity)
+            |> put_view(json: DundaWeb.ErrorJSON)
+            |> render(:"422", changeset: changeset)
+        end
+
+      {:error, _} ->
+        conn
+        |> put_status(:unauthorized)
+        |> json(%{error: %{code: "invalid_credentials"}})
     end
   end
 
@@ -109,22 +128,27 @@ defmodule DundaWeb.AuthController do
     case GoogleVerifier.verify(token) do
       {:ok, profile} ->
         case Accounts.upsert_oauth_user(profile) do
-        {:ok, user} ->
-          _ = Dunda.Audit.record_from_conn(conn, "auth.oauth_verified", "user", user.id, %{provider: "google"})
-          token = Token.sign(user)
-          render(conn, :auth_success, user: user, token: token)
+          {:ok, user} ->
+            _ =
+              Dunda.Audit.record_from_conn(conn, "auth.oauth_verified", "user", user.id, %{
+                provider: "google"
+              })
 
-        {:error, :identity_conflict} ->
-          conn
-          |> put_status(:conflict)
-          |> json(%{error: %{code: "identity_conflict"}})
+            token = Token.sign(user)
+            render(conn, :auth_success, user: user, token: token)
 
-        {:error, changeset} ->
-          conn
-          |> put_status(:unprocessable_entity)
-          |> put_view(json: DundaWeb.ErrorJSON)
-          |> render(:"422", changeset: changeset)
-      end
+          {:error, :identity_conflict} ->
+            conn
+            |> put_status(:conflict)
+            |> json(%{error: %{code: "identity_conflict"}})
+
+          {:error, changeset} ->
+            conn
+            |> put_status(:unprocessable_entity)
+            |> put_view(json: DundaWeb.ErrorJSON)
+            |> render(:"422", changeset: changeset)
+        end
+
       {:error, _reason} ->
         conn
         |> put_status(:unauthorized)

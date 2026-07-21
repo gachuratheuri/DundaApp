@@ -92,7 +92,15 @@ defmodule Dunda.Accounts do
            })
            |> Repo.insert() do
         {:ok, consent} ->
-          _ = Dunda.Audit.record(%{actor_user_id: user_id, action: "privacy.consent_granted", resource_type: "consent", resource_id: consent.id, metadata: %{purpose: purpose, version: version}})
+          _ =
+            Dunda.Audit.record(%{
+              actor_user_id: user_id,
+              action: "privacy.consent_granted",
+              resource_type: "consent",
+              resource_id: consent.id,
+              metadata: %{purpose: purpose, version: version}
+            })
+
           consent
 
         {:error, changeset} ->
@@ -102,14 +110,23 @@ defmodule Dunda.Accounts do
   end
 
   @doc "Revokes the active consent grant for `(user_id, purpose)`, if any."
-  @spec revoke_consent(integer(), String.t()) :: {:ok, Consent.t() | nil} | {:error, Ecto.Changeset.t()}
+  @spec revoke_consent(integer(), String.t()) ::
+          {:ok, Consent.t() | nil} | {:error, Ecto.Changeset.t()}
   def revoke_consent(user_id, purpose) do
     case revoke_active_consent(user_id, purpose) do
       {:ok, nil} = result ->
         result
 
       {:ok, consent} = result ->
-        _ = Dunda.Audit.record(%{actor_user_id: user_id, action: "privacy.consent_revoked", resource_type: "consent", resource_id: consent.id, metadata: %{purpose: purpose}})
+        _ =
+          Dunda.Audit.record(%{
+            actor_user_id: user_id,
+            action: "privacy.consent_revoked",
+            resource_type: "consent",
+            resource_id: consent.id,
+            metadata: %{purpose: purpose}
+          })
+
         result
 
       {:error, _changeset} = error ->

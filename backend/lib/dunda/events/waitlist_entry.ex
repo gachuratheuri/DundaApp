@@ -27,7 +27,15 @@ defmodule Dunda.Events.WaitlistEntry do
   @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(entry, attrs) do
     entry
-    |> cast(attrs, [:quantity, :status, :notified_at, :offer_expires_at, :event_id, :tier_id, :user_id])
+    |> cast(attrs, [
+      :quantity,
+      :status,
+      :notified_at,
+      :offer_expires_at,
+      :event_id,
+      :tier_id,
+      :user_id
+    ])
     |> validate_required([:event_id, :user_id])
     |> validate_number(:quantity, greater_than: 0)
     |> validate_inclusion(:status, @statuses)

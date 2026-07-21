@@ -1,5 +1,5 @@
 defmodule Dunda.Audit.Event do
-  @moduledoc """Immutable audit event persisted for security and financial review."""
+  @moduledoc "Immutable audit event persisted for security and financial review."
 
   use Ecto.Schema
   import Ecto.Changeset
@@ -23,7 +23,15 @@ defmodule Dunda.Audit.Event do
   @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(event, attrs) do
     event
-    |> cast(attrs, [:actor_user_id, :action, :resource_type, :resource_id, :metadata, :request_id, :occurred_at])
+    |> cast(attrs, [
+      :actor_user_id,
+      :action,
+      :resource_type,
+      :resource_id,
+      :metadata,
+      :request_id,
+      :occurred_at
+    ])
     |> validate_required([:action, :occurred_at])
     |> validate_length(:action, min: 3, max: 120)
     |> validate_length(:resource_type, max: 120)

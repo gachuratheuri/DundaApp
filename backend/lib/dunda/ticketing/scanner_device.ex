@@ -20,12 +20,34 @@ defmodule Dunda.Ticketing.ScannerDevice do
 
   def changeset(device, attrs) do
     device
-    |> cast(attrs, [:organisation_id, :event_id, :operator_user_id, :device_name, :device_public_key, :key_fingerprint, :status, :last_seen_at, :revoked_at, :revocation_reason])
-    |> validate_required([:organisation_id, :operator_user_id, :device_name, :device_public_key, :key_fingerprint, :status])
+    |> cast(attrs, [
+      :organisation_id,
+      :event_id,
+      :operator_user_id,
+      :device_name,
+      :device_public_key,
+      :key_fingerprint,
+      :status,
+      :last_seen_at,
+      :revoked_at,
+      :revocation_reason
+    ])
+    |> validate_required([
+      :organisation_id,
+      :operator_user_id,
+      :device_name,
+      :device_public_key,
+      :key_fingerprint,
+      :status
+    ])
     |> validate_length(:device_name, min: 1, max: 120)
     |> validate_length(:key_fingerprint, min: 16, max: 128)
     |> validate_inclusion(:status, ~w(active suspended revoked))
-    |> validate_change(:device_public_key, fn :device_public_key, key -> if is_binary(key) and byte_size(key) == 32, do: [], else: [device_public_key: "must be a 32-byte Ed25519 key"] end)
+    |> validate_change(:device_public_key, fn :device_public_key, key ->
+      if is_binary(key) and byte_size(key) == 32,
+        do: [],
+        else: [device_public_key: "must be a 32-byte Ed25519 key"]
+    end)
     |> assoc_constraint(:organisation)
     |> assoc_constraint(:operator)
     |> assoc_constraint(:event)

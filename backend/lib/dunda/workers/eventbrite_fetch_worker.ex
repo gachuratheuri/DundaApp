@@ -20,37 +20,39 @@ defmodule Dunda.Workers.EventbriteFetchWorker do
     if Dunda.Containment.blocked?(:dynamic_scraping) do
       {:cancel, :phase_0_containment}
     else
-    case token() do
-      nil ->
-        Logger.info("EventbriteFetchWorker: EVENTBRITE_TOKEN unset — skipping org #{org_id}")
-        {:cancel, :no_credentials}
+      case token() do
+        nil ->
+          Logger.info("EventbriteFetchWorker: EVENTBRITE_TOKEN unset — skipping org #{org_id}")
+          {:cancel, :no_credentials}
 
-      token ->
-        url = "https://www.eventbriteapi.com/v3/organizations/#{ebo_id}/events/"
+        token ->
+          url = "https://www.eventbriteapi.com/v3/organizations/#{ebo_id}/events/"
 
-        case Req.get(url,
-               params: [status: "live", expand: "venue"],
-               auth: {:bearer, token},
-               max_retries: 0,
-               receive_timeout: 15_000
-             ) do
-          {:ok, %{status: 200, body: body}} ->
-            case SchemaGuard.api_events("eventbrite", body) do
-              {:ok, events} ->
-                if events == [], do: SchemaGuard.report_empty("eventbrite", ebo_id)
-                IngestWorker.enqueue(events, "eventbrite", org_id)
-                :ok
-              {:schema_drift, reason} -> {:error, reason}
-            end
+          case Req.get(url,
+                 params: [status: "live", expand: "venue"],
+                 auth: {:bearer, token},
+                 max_retries: 0,
+                 receive_timeout: 15_000
+               ) do
+            {:ok, %{status: 200, body: body}} ->
+              case SchemaGuard.api_events("eventbrite", body) do
+                {:ok, events} ->
+                  if events == [], do: SchemaGuard.report_empty("eventbrite", ebo_id)
+                  IngestWorker.enqueue(events, "eventbrite", org_id)
+                  :ok
 
-          {:ok, %{status: status}} ->
-            {:error, {:http_status, status}}
+                {:schema_drift, reason} ->
+                  {:error, reason}
+              end
 
-          {:error, reason} ->
-            Logger.warning("EventbriteFetchWorker org #{org_id} failed: #{inspect(reason)}")
-            {:error, reason}
-        end
-    end
+            {:ok, %{status: status}} ->
+              {:error, {:http_status, status}}
+
+            {:error, reason} ->
+              Logger.warning("EventbriteFetchWorker org #{org_id} failed: #{inspect(reason)}")
+              {:error, reason}
+          end
+      end
     end
   end
 

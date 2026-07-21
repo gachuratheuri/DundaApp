@@ -27,15 +27,19 @@ defmodule Dunda.PaymentIntentTransitionPropertyTest do
   # Keep this in sync with the module — that is the point of the test.
   @allowed %{
     "created" => ~w(created inventory_reserved failed manual_review),
-    "inventory_reserved" => ~w(inventory_reserved provider_submission_pending failed expired_pending_reconciliation manual_review),
-    "provider_submission_pending" => ~w(provider_submission_pending provider_pending failed manual_review),
-    "provider_pending" => ~w(provider_pending confirmed failed expired_pending_reconciliation confirmed_late manual_review refund_pending),
+    "inventory_reserved" =>
+      ~w(inventory_reserved provider_submission_pending failed expired_pending_reconciliation manual_review),
+    "provider_submission_pending" =>
+      ~w(provider_submission_pending provider_pending failed manual_review),
+    "provider_pending" =>
+      ~w(provider_pending confirmed failed expired_pending_reconciliation confirmed_late manual_review refund_pending),
     "confirmed" => ~w(confirmed fulfilled refund_pending manual_review),
-    "fulfilled" => ~w(fulfilled refund_pending refunded manual_review),
+    "fulfilled" => ~w(fulfilled refund_pending manual_review),
     "failed" => ~w(failed manual_review),
-    "expired_pending_reconciliation" => ~w(expired_pending_reconciliation confirmed_late manual_review refund_pending),
+    "expired_pending_reconciliation" =>
+      ~w(expired_pending_reconciliation confirmed_late manual_review refund_pending),
     "confirmed_late" => ~w(confirmed_late fulfilled refund_pending manual_review),
-    "manual_review" => ~w(manual_review confirmed_late refund_pending refunded),
+    "manual_review" => ~w(manual_review confirmed_late refund_pending),
     "refund_pending" => ~w(refund_pending refunded manual_review),
     "refunded" => ~w(refunded)
   }
@@ -67,7 +71,11 @@ defmodule Dunda.PaymentIntentTransitionPropertyTest do
   end
 
   property "refunded, once entered, can never be left by any subsequent proposed transition" do
-    check all(attempts <- StreamData.list_of(StreamData.member_of(@states), min_length: 1, max_length: 10), max_runs: 100) do
+    check all(
+            attempts <-
+              StreamData.list_of(StreamData.member_of(@states), min_length: 1, max_length: 10),
+            max_runs: 100
+          ) do
       intent = base_intent("refunded")
 
       Enum.each(attempts, fn next ->
@@ -79,13 +87,19 @@ defmodule Dunda.PaymentIntentTransitionPropertyTest do
 
   property "a changeset that does not change :state is always valid regardless of current state (no spurious rejection)" do
     check all(current <- StreamData.member_of(@states), max_runs: 20) do
-      changeset = PaymentIntent.changeset(base_intent(current), %{failure_reason: "unrelated_update"})
+      changeset =
+        PaymentIntent.changeset(base_intent(current), %{failure_reason: "unrelated_update"})
+
       assert changeset.valid?
     end
   end
 
   property "PaymentIntent.transition_allowed?/2 agrees with the changeset's own validation for every pair" do
-    check all(current <- StreamData.member_of(@states), next <- StreamData.member_of(@states), max_runs: 200) do
+    check all(
+            current <- StreamData.member_of(@states),
+            next <- StreamData.member_of(@states),
+            max_runs: 200
+          ) do
       changeset = PaymentIntent.changeset(base_intent(current), %{state: next, version: 2})
       assert changeset.valid? == PaymentIntent.transition_allowed?(current, next)
     end

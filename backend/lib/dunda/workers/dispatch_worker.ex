@@ -88,7 +88,6 @@ defmodule Dunda.Workers.DispatchWorker do
     fetcher.new(args)
   end
 
-  defp tally({:ok, jobs}) when is_list(jobs), do: {length(jobs), jobs}
   defp tally(jobs) when is_list(jobs), do: {length(jobs), jobs}
   defp tally(other), do: {0, other}
 end

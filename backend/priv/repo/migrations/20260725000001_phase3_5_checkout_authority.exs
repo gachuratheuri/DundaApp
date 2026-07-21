@@ -54,7 +54,7 @@ defmodule Dunda.Repo.Migrations.Phase3To5CheckoutAuthority do
 
     create table(:payment_intents, primary_key: false) do
       add :id, :binary_id, primary_key: true
-      add :quote_id, references(:quotes, on_delete: :restrict), null: false
+      add :quote_id, references(:quotes, type: :binary_id, on_delete: :restrict), null: false
       add :user_id, references(:users, on_delete: :restrict), null: false
       add :event_id, references(:events, on_delete: :restrict), null: false
       add :ticket_tier_id, references(:ticket_tiers, on_delete: :restrict)
@@ -127,7 +127,7 @@ defmodule Dunda.Repo.Migrations.Phase3To5CheckoutAuthority do
 
     create table(:payment_attempts, primary_key: false) do
       add :id, :binary_id, primary_key: true
-      add :payment_intent_id, references(:payment_intents, on_delete: :restrict), null: false
+      add :payment_intent_id, references(:payment_intents, type: :binary_id, on_delete: :restrict), null: false
       add :provider, :string, null: false
       add :attempt_key, :string, null: false
       add :provider_checkout_id, :string
@@ -151,7 +151,7 @@ defmodule Dunda.Repo.Migrations.Phase3To5CheckoutAuthority do
       add :id, :binary_id, primary_key: true
       add :provider, :string, null: false
       add :provider_event_id, :string, null: false
-      add :payment_intent_id, references(:payment_intents, on_delete: :nilify_all)
+      add :payment_intent_id, references(:payment_intents, type: :binary_id, on_delete: :nilify_all)
       add :provider_checkout_id, :string
       add :payload, :map, null: false, default: %{}
       add :outcome, :string
@@ -201,8 +201,8 @@ defmodule Dunda.Repo.Migrations.Phase3To5CheckoutAuthority do
 
     create table(:inventory_reservations, primary_key: false) do
       add :id, :binary_id, primary_key: true
-      add :payment_intent_id, references(:payment_intents, on_delete: :restrict), null: false
-      add :inventory_pool_id, references(:inventory_pools, on_delete: :restrict), null: false
+      add :payment_intent_id, references(:payment_intents, type: :binary_id, on_delete: :restrict), null: false
+      add :inventory_pool_id, references(:inventory_pools, type: :binary_id, on_delete: :restrict), null: false
       add :quantity, :integer, null: false
       add :status, :string, null: false, default: "active"
       add :expires_at, :utc_datetime, null: false
@@ -222,7 +222,7 @@ defmodule Dunda.Repo.Migrations.Phase3To5CheckoutAuthority do
 
     create table(:payment_line_items, primary_key: false) do
       add :id, :binary_id, primary_key: true
-      add :payment_intent_id, references(:payment_intents, on_delete: :restrict), null: false
+      add :payment_intent_id, references(:payment_intents, type: :binary_id, on_delete: :restrict), null: false
       add :line_number, :integer, null: false
       add :ticket_tier_id, references(:ticket_tiers, on_delete: :restrict)
       add :quantity, :integer, null: false
@@ -239,7 +239,7 @@ defmodule Dunda.Repo.Migrations.Phase3To5CheckoutAuthority do
 
     create table(:ticket_batches, primary_key: false) do
       add :id, :binary_id, primary_key: true
-      add :payment_line_item_id, references(:payment_line_items, on_delete: :restrict), null: false
+      add :payment_line_item_id, references(:payment_line_items, type: :binary_id, on_delete: :restrict), null: false
       add :quantity, :integer, null: false
       add :status, :string, null: false, default: "created"
       timestamps()
@@ -249,7 +249,7 @@ defmodule Dunda.Repo.Migrations.Phase3To5CheckoutAuthority do
     create constraint(:ticket_batches, :ticket_batch_quantity_valid, check: "quantity > 0")
     create constraint(:ticket_batches, :ticket_batch_status_valid, check: "status IN ('created', 'fulfilled', 'failed', 'manual_review')")
     alter table(:tickets) do
-      add :ticket_batch_id, references(:ticket_batches, on_delete: :restrict)
+      add :ticket_batch_id, references(:ticket_batches, type: :binary_id, on_delete: :restrict)
     end
     create index(:tickets, [:ticket_batch_id])
     execute """
@@ -309,7 +309,7 @@ defmodule Dunda.Repo.Migrations.Phase3To5CheckoutAuthority do
 
     create table(:payment_intent_transitions, primary_key: false) do
       add :id, :binary_id, primary_key: true
-      add :payment_intent_id, references(:payment_intents, on_delete: :restrict), null: false
+      add :payment_intent_id, references(:payment_intents, type: :binary_id, on_delete: :restrict), null: false
       add :from_state, :string, null: false
       add :to_state, :string, null: false
       add :prior_version, :integer, null: false
@@ -348,8 +348,8 @@ defmodule Dunda.Repo.Migrations.Phase3To5CheckoutAuthority do
 
     create table(:journal_lines, primary_key: false) do
       add :id, :binary_id, primary_key: true
-      add :journal_transaction_id, references(:journal_transactions, on_delete: :restrict), null: false
-      add :account_id, references(:accounts, on_delete: :restrict), null: false
+      add :journal_transaction_id, references(:journal_transactions, type: :binary_id, on_delete: :restrict), null: false
+      add :account_id, references(:accounts, type: :binary_id, on_delete: :restrict), null: false
       add :debit_cents, :integer, null: false, default: 0
       add :credit_cents, :integer, null: false, default: 0
       add :currency, :string, null: false
@@ -363,7 +363,7 @@ defmodule Dunda.Repo.Migrations.Phase3To5CheckoutAuthority do
            )
 
     create table(:account_balances, primary_key: false) do
-      add :account_id, references(:accounts, on_delete: :restrict), null: false
+      add :account_id, references(:accounts, type: :binary_id, on_delete: :restrict), null: false
       add :currency, :string, null: false
       add :balance_cents, :bigint, null: false, default: 0
       add :updated_at, :utc_datetime, null: false

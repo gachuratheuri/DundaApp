@@ -20,7 +20,9 @@ defmodule Dunda.Security.WebhookTest do
 
   defp conn_with_secret(secret) do
     conn(:post, "/api/mpesa/callback", %{})
-    |> then(fn conn -> if secret, do: Plug.Conn.put_req_header(conn, "x-dunda-webhook-secret", secret), else: conn end)
+    |> then(fn conn ->
+      if secret, do: Plug.Conn.put_req_header(conn, "x-dunda-webhook-secret", secret), else: conn
+    end)
   end
 
   test "accepts the correct shared secret for daraja" do

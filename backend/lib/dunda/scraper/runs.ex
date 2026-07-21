@@ -5,7 +5,13 @@ defmodule Dunda.Scraper.Runs do
 
   def start(attrs) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
-    attrs = attrs |> Map.put_new(:started_at, now) |> Map.put_new(:metadata, %{}) |> Map.put_new(:status, "started")
+
+    attrs =
+      attrs
+      |> Map.put_new(:started_at, now)
+      |> Map.put_new(:metadata, %{})
+      |> Map.put_new(:status, "started")
+
     case Repo.insert(SourceRun.changeset(%SourceRun{}, attrs)) do
       {:ok, run} -> {:ok, run}
       {:error, reason} -> {:error, reason}
@@ -16,6 +22,7 @@ defmodule Dunda.Scraper.Runs do
 
   def finish(%SourceRun{} = run, attrs) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
+
     run
     |> SourceRun.changeset(Map.put(attrs, :finished_at, now))
     |> Repo.update()

@@ -14,13 +14,18 @@ defmodule Dunda.Auth.OTP do
   @spec send_code(String.t()) :: :ok | {:error, atom()}
   def send_code(phone) do
     with {:ok, phone} <- normalize_phone(phone),
-         {:ok, "OK"} <- Redix.command(:redix, ["SET", cooldown_key(phone), "1", "EX", "60", "NX"]),
+         {:ok, "OK"} <-
+           Redix.command(:redix, ["SET", cooldown_key(phone), "1", "EX", "60", "NX"]),
          code <- random_code(),
          digest <- digest(phone, code),
-         {:ok, "OK"} <- Redix.command(:redix, ["SET", key(phone), digest, "EX", to_string(@ttl_seconds)]),
-         {:ok, "OK"} <- Redix.command(:redix, ["SET", attempts_key(phone), "0", "EX", to_string(@ttl_seconds)]) do
+         {:ok, "OK"} <-
+           Redix.command(:redix, ["SET", key(phone), digest, "EX", to_string(@ttl_seconds)]),
+         {:ok, "OK"} <-
+           Redix.command(:redix, ["SET", attempts_key(phone), "0", "EX", to_string(@ttl_seconds)]) do
       case adapter().deliver(phone, code) do
-        :ok -> :ok
+        :ok ->
+          :ok
+
         {:error, _} ->
           Redix.command(:redix, ["DEL", key(phone), attempts_key(phone), cooldown_key(phone)])
           {:error, :otp_unavailable}
@@ -65,18 +70,29 @@ defmodule Dunda.Auth.OTP do
     digits = String.replace(phone, ~r/\D/, "")
 
     cond do
-      String.starts_with?(digits, "254") and byte_size(digits) == 12 -> {:ok, digits}
-      String.starts_with?(digits, "0") and byte_size(digits) == 10 -> {:ok, "254" <> String.slice(digits, 1..-1//1)}
-      String.starts_with?(digits, "7") and byte_size(digits) == 9 -> {:ok, "254" <> digits}
-      String.starts_with?(digits, "1") and byte_size(digits) == 9 -> {:ok, "254" <> digits}
-      true -> {:error, :invalid_phone}
+      String.starts_with?(digits, "254") and byte_size(digits) == 12 ->
+        {:ok, digits}
+
+      String.starts_with?(digits, "0") and byte_size(digits) == 10 ->
+        {:ok, "254" <> String.slice(digits, 1..-1//1)}
+
+      String.starts_with?(digits, "7") and byte_size(digits) == 9 ->
+        {:ok, "254" <> digits}
+
+      String.starts_with?(digits, "1") and byte_size(digits) == 9 ->
+        {:ok, "254" <> digits}
+
+      true ->
+        {:error, :invalid_phone}
     end
   end
 
   defp normalize_phone(_), do: {:error, :invalid_phone}
 
   defp random_code do
-    (:crypto.strong_rand_bytes(4) |> :binary.decode_unsigned() |> rem(1_000_000))
+    :crypto.strong_rand_bytes(4)
+    |> :binary.decode_unsigned()
+    |> rem(1_000_000)
     |> Integer.to_string()
     |> String.pad_leading(6, "0")
   end
@@ -92,7 +108,9 @@ defmodule Dunda.Auth.OTP do
 
   defp otp_secret do
     Application.get_env(:dunda, :otp_secret) ||
-      Application.get_env(:dunda, Dunda.Hashed.HMAC, []) |> Keyword.get(:secret, "") |> to_string()
+      Application.get_env(:dunda, Dunda.Hashed.HMAC, [])
+      |> Keyword.get(:secret, "")
+      |> to_string()
   end
 
   defp adapter do

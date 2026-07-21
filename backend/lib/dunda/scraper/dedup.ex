@@ -39,7 +39,7 @@ defmodule Dunda.Scraper.Dedup do
 
   @impl true
   def init(:ok) do
-    {:ok, Bloomex.scalable(@capacity, @false_positive, 2, 0.9)}
+    {:ok, Bloomex.scalable(@capacity, @false_positive, 0.9, 2)}
   end
 
   @impl true

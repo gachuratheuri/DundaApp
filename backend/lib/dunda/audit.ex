@@ -12,7 +12,11 @@ defmodule Dunda.Audit do
 
   require Logger
 
-  @sensitive_keys ~w(password token authorization cookie otp secret passkey consumer_secret)
+  @sensitive_keys ~w(
+    password token authorization cookie otp secret passkey consumer_secret
+    receipt msisdn phone mpesa bearer jwt api_key apikey security_credential
+    b2c_security_credential phone_number phonenumber
+  )
 
   @spec record(map()) :: {:ok, Event.t()} | {:error, Ecto.Changeset.t()}
   def record(attrs) when is_map(attrs) do
@@ -23,7 +27,9 @@ defmodule Dunda.Audit do
     |> Map.put_new(:occurred_at, DateTime.utc_now() |> DateTime.truncate(:second))
     |> then(&(%Event{} |> Event.changeset(&1) |> Repo.insert()))
     |> case do
-      {:ok, _event} = result -> result
+      {:ok, _event} = result ->
+        result
+
       {:error, _changeset} = result ->
         Dunda.Observability.increment(:audit_write_errors)
         Logger.error("audit event write failed")
@@ -34,7 +40,9 @@ defmodule Dunda.Audit do
   @spec record_from_conn(Plug.Conn.t(), String.t(), String.t() | nil, term(), map()) ::
           {:ok, Event.t()} | {:error, Ecto.Changeset.t()}
   def record_from_conn(conn, action, resource_type, resource_id, metadata \\ %{}) do
-    user_id = get_in(conn.assigns, [:current_user, :id]) || get_in(conn.assigns, [:current_organiser, :id])
+    user_id =
+      get_in(conn.assigns, [:current_user, :id]) ||
+        get_in(conn.assigns, [:current_organiser, :id])
 
     record(%{
       actor_user_id: user_id,

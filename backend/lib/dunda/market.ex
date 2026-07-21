@@ -91,11 +91,20 @@ defmodule Dunda.Market do
         order = Repo.one(from o in Order, where: o.id == ^order_id, lock: "FOR UPDATE")
 
         cond do
-          is_nil(order) -> Repo.rollback(:order_not_found)
-          order.kind != "resale" -> Repo.rollback(:not_resale_order)
-          order.status == "completed" -> transfer_locked(order, false)
-          order.status == "pending" and Keyword.get(opts, :confirmed?, false) -> transfer_locked(order, true)
-          true -> Repo.rollback(:payment_not_confirmed)
+          is_nil(order) ->
+            Repo.rollback(:order_not_found)
+
+          order.kind != "resale" ->
+            Repo.rollback(:not_resale_order)
+
+          order.status == "completed" ->
+            transfer_locked(order, false)
+
+          order.status == "pending" and Keyword.get(opts, :confirmed?, false) ->
+            transfer_locked(order, true)
+
+          true ->
+            Repo.rollback(:payment_not_confirmed)
         end
       end)
       |> unwrap_transaction()
@@ -109,11 +118,20 @@ defmodule Dunda.Market do
       order = Repo.one(from o in Order, where: o.id == ^order_id, lock: "FOR UPDATE")
 
       cond do
-        is_nil(order) -> Repo.rollback(:order_not_found)
-        order.kind != "resale" -> Repo.rollback(:not_resale_order)
-        order.status not in ["pending", "failed", "invalid"] -> Repo.rollback(:order_not_cancellable)
+        is_nil(order) ->
+          Repo.rollback(:order_not_found)
+
+        order.kind != "resale" ->
+          Repo.rollback(:not_resale_order)
+
+        order.status not in ["pending", "failed", "invalid"] ->
+          Repo.rollback(:order_not_cancellable)
+
         true ->
-          if listing = Repo.one(from l in Listing, where: l.payment_order_id == ^order.id, lock: "FOR UPDATE") do
+          if listing =
+               Repo.one(
+                 from l in Listing, where: l.payment_order_id == ^order.id, lock: "FOR UPDATE"
+               ) do
             listing
             |> Listing.changeset(%{status: "active", payment_order_id: nil})
             |> Repo.update()
@@ -134,7 +152,9 @@ defmodule Dunda.Market do
 
   @doc "Legacy entry point deliberately refuses a buyer-only transfer."
   def execute_purchase(%Listing{}, _buyer_id), do: {:error, :resale_payment_required}
-  def execute_purchase(%Listing{}, _buyer_id, _payment_proof), do: {:error, :resale_payment_required}
+
+  def execute_purchase(%Listing{}, _buyer_id, _payment_proof),
+    do: {:error, :resale_payment_required}
 
   defp create_resale_intent_locked(listing_id, buyer_id, idempotency_key, phone) do
     listing =
@@ -146,12 +166,24 @@ defmodule Dunda.Market do
       )
 
     cond do
-      is_nil(listing) -> Repo.rollback(:listing_not_found)
-      listing.status != "active" -> Repo.rollback(:listing_not_active)
-      is_nil(listing.face_value_kes) -> Repo.rollback(:face_value_missing)
-      listing.ticket.user_id == buyer_id -> Repo.rollback(:seller_cannot_buy_own_listing)
-      listing.ticket.status != "valid" -> Repo.rollback(:ticket_not_transferable)
-      not is_binary(phone) or String.trim(phone) == "" -> Repo.rollback(:phone_required)
+      is_nil(listing) ->
+        Repo.rollback(:listing_not_found)
+
+      listing.status != "active" ->
+        Repo.rollback(:listing_not_active)
+
+      is_nil(listing.face_value_kes) ->
+        Repo.rollback(:face_value_missing)
+
+      listing.ticket.user_id == buyer_id ->
+        Repo.rollback(:seller_cannot_buy_own_listing)
+
+      listing.ticket.status != "valid" ->
+        Repo.rollback(:ticket_not_transferable)
+
+      not is_binary(phone) or String.trim(phone) == "" ->
+        Repo.rollback(:phone_required)
+
       not is_binary(idempotency_key) or byte_size(idempotency_key) not in 16..200 ->
         Repo.rollback(:idempotency_key_required)
 
@@ -174,8 +206,17 @@ defmodule Dunda.Market do
 
         with {:ok, order} <- %Order{} |> Order.create_changeset(attrs) |> Repo.insert(),
              {:ok, _listing} <-
-               listing |> Listing.changeset(%{status: "pending", payment_order_id: order.id}) |> Repo.update() do
-          _ = Dunda.Audit.record(%{action: "resale.payment_intent_created", resource_type: "order", resource_id: to_string(order.id), metadata: %{listing_id: listing.id, amount_cents: order.amount_cents}})
+               listing
+               |> Listing.changeset(%{status: "pending", payment_order_id: order.id})
+               |> Repo.update() do
+          _ =
+            Dunda.Audit.record(%{
+              action: "resale.payment_intent_created",
+              resource_type: "order",
+              resource_id: to_string(order.id),
+              metadata: %{listing_id: listing.id, amount_cents: order.amount_cents}
+            })
+
           order
         else
           {:error, changeset} -> Repo.rollback(changeset)
@@ -184,12 +225,19 @@ defmodule Dunda.Market do
   end
 
   defp transfer_locked(order, confirmed_pending?) do
-    listing = Repo.one(from l in Listing, where: l.payment_order_id == ^order.id, lock: "FOR UPDATE")
+    listing =
+      Repo.one(from l in Listing, where: l.payment_order_id == ^order.id, lock: "FOR UPDATE")
 
     cond do
-      is_nil(listing) -> Repo.rollback(:listing_not_found)
-      listing.status == "sold" and listing.buyer_id == order.user_id -> listing
-      listing.status not in ["active", "pending"] -> Repo.rollback(:listing_not_transferable)
+      is_nil(listing) ->
+        Repo.rollback(:listing_not_found)
+
+      listing.status == "sold" and listing.buyer_id == order.user_id ->
+        listing
+
+      listing.status not in ["active", "pending"] ->
+        Repo.rollback(:listing_not_transferable)
+
       true ->
         ticket = Repo.one(from t in Ticket, where: t.id == ^listing.ticket_id, lock: "FOR UPDATE")
 
@@ -201,44 +249,114 @@ defmodule Dunda.Market do
 
           multi =
             Multi.new()
-            |> Multi.insert(:new_ticket, Ticket.changeset(%Ticket{}, %{id: new_id, user_id: order.user_id, event_id: ticket.event_id, order_id: order.id, tier_id: ticket.tier_id, tier_label: ticket.tier_label, price_kes: ticket.price_kes, status: "valid", jwt: nil, transferred_from_user_id: ticket.user_id, supersedes_ticket_id: ticket.id, fulfillment_key: "resale:#{listing.id}"}))
-            |> Multi.update(:old_ticket, Ticket.changeset(ticket, %{status: "transferred", jwt: nil, revoked_at: now, revocation_reason: "resale_transfer", replaced_by_ticket_id: new_id, credential_epoch: ticket.credential_epoch + 1}))
+            |> Multi.insert(
+              :new_ticket,
+              Ticket.changeset(%Ticket{}, %{
+                id: new_id,
+                user_id: order.user_id,
+                event_id: ticket.event_id,
+                order_id: order.id,
+                tier_id: ticket.tier_id,
+                tier_label: ticket.tier_label,
+                price_kes: ticket.price_kes,
+                status: "valid",
+                jwt: nil,
+                transferred_from_user_id: ticket.user_id,
+                supersedes_ticket_id: ticket.id,
+                fulfillment_key: "resale:#{listing.id}"
+              })
+            )
+            |> Multi.update(
+              :old_ticket,
+              Ticket.changeset(ticket, %{
+                status: "transferred",
+                jwt: nil,
+                revoked_at: now,
+                revocation_reason: "resale_transfer",
+                replaced_by_ticket_id: new_id,
+                credential_epoch: ticket.credential_epoch + 1
+              })
+            )
             |> Multi.run(:credential_event, fn repo, %{old_ticket: old_ticket} ->
               if old_ticket.credential_version == 2 do
-                repo.insert(TicketCredentialEvent.changeset(%TicketCredentialEvent{}, %{ticket_id: old_ticket.id, event_type: "revoked", credential_epoch: old_ticket.credential_epoch, public_key_fingerprint: old_ticket.credential_public_key && Base.url_encode64(:crypto.hash(:sha256, old_ticket.credential_public_key), padding: false), actor_user_id: ticket.user_id, metadata: %{reason: "resale_transfer"}, occurred_at: now}))
+                repo.insert(
+                  TicketCredentialEvent.changeset(%TicketCredentialEvent{}, %{
+                    ticket_id: old_ticket.id,
+                    event_type: "revoked",
+                    credential_epoch: old_ticket.credential_epoch,
+                    public_key_fingerprint:
+                      old_ticket.credential_public_key &&
+                        Base.url_encode64(:crypto.hash(:sha256, old_ticket.credential_public_key),
+                          padding: false
+                        ),
+                    actor_user_id: ticket.user_id,
+                    metadata: %{reason: "resale_transfer"},
+                    occurred_at: now
+                  })
+                )
               else
                 {:ok, nil}
               end
             end)
-            |> Multi.update(:listing, Listing.changeset(listing, %{status: "sold", buyer_id: order.user_id, sold_at: now}))
+            |> Multi.update(
+              :listing,
+              Listing.changeset(listing, %{status: "sold", buyer_id: order.user_id, sold_at: now})
+            )
 
           case Repo.transaction(multi) do
             {:ok, %{listing: sold_listing}} ->
-              case Dunda.Ledger.record_transfer(%{from_account: "resale:#{listing.id}:buyer", to_account: "user:#{ticket.user_id}:payable", amount_cents: order.amount_cents, reference: "resale:#{listing.id}:seller-credit"}) do
+              case Dunda.Ledger.record_transfer(%{
+                     from_account: "resale:#{listing.id}:buyer",
+                     to_account: "user:#{ticket.user_id}:payable",
+                     amount_cents: order.amount_cents,
+                     reference: "resale:#{listing.id}:seller-credit"
+                   }) do
                 {:ok, _transfer} ->
                   if confirmed_pending? do
-                    case order |> Order.status_changeset(%{status: "completed"}) |> Repo.update() do
+                    case order
+                         |> Order.status_changeset(%{status: "completed"})
+                         |> Repo.update() do
                       {:ok, _} -> :ok
                       {:error, changeset} -> Repo.rollback(changeset)
                     end
                   end
-                  _ = Dunda.Audit.record(%{action: "resale.transfer_completed", resource_type: "resale_listing", resource_id: listing.id, metadata: %{order_id: order.id, buyer_id: order.user_id, seller_id: ticket.user_id}})
+
+                  _ =
+                    Dunda.Audit.record(%{
+                      action: "resale.transfer_completed",
+                      resource_type: "resale_listing",
+                      resource_id: listing.id,
+                      metadata: %{
+                        order_id: order.id,
+                        buyer_id: order.user_id,
+                        seller_id: ticket.user_id
+                      }
+                    })
+
                   sold_listing
 
-                {:error, reason} -> Repo.rollback(reason)
+                {:error, reason} ->
+                  Repo.rollback(reason)
               end
 
-            {:error, _operation, reason, _changes} -> Repo.rollback(reason)
+            {:error, _operation, reason, _changes} ->
+              Repo.rollback(reason)
           end
         end
     end
   end
 
   defp existing_resale_order(buyer_id, idempotency_key) do
-    Repo.one(from o in Order, where: o.user_id == ^buyer_id and o.idempotency_key == ^idempotency_key and o.kind == "resale", lock: "FOR UPDATE")
+    Repo.one(
+      from o in Order,
+        where:
+          o.user_id == ^buyer_id and o.idempotency_key == ^idempotency_key and o.kind == "resale",
+        lock: "FOR UPDATE"
+    )
   end
 
-  defp resale_reference(key), do: "resale_" <> Base.url_encode64(:crypto.hash(:sha256, key), padding: false)
+  defp resale_reference(key),
+    do: "resale_" <> Base.url_encode64(:crypto.hash(:sha256, key), padding: false)
 
   defp unwrap_transaction({:ok, value}), do: {:ok, value}
   defp unwrap_transaction({:error, reason}), do: {:error, reason}

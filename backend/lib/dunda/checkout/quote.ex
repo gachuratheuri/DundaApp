@@ -25,8 +25,34 @@ defmodule Dunda.Checkout.Quote do
 
   def changeset(quote, attrs) do
     quote
-    |> cast(attrs, [:quantity, :unit_price_cents, :fee_cents, :total_cents, :currency, :price_version, :signature, :status, :expires_at, :consumed_at, :user_id, :event_id, :ticket_tier_id])
-    |> validate_required([:quantity, :unit_price_cents, :fee_cents, :total_cents, :currency, :price_version, :signature, :status, :expires_at, :user_id, :event_id])
+    |> cast(attrs, [
+      :quantity,
+      :unit_price_cents,
+      :fee_cents,
+      :total_cents,
+      :currency,
+      :price_version,
+      :signature,
+      :status,
+      :expires_at,
+      :consumed_at,
+      :user_id,
+      :event_id,
+      :ticket_tier_id
+    ])
+    |> validate_required([
+      :quantity,
+      :unit_price_cents,
+      :fee_cents,
+      :total_cents,
+      :currency,
+      :price_version,
+      :signature,
+      :status,
+      :expires_at,
+      :user_id,
+      :event_id
+    ])
     |> validate_number(:quantity, greater_than: 0)
     |> validate_number(:unit_price_cents, greater_than: 0)
     |> validate_number(:fee_cents, greater_than_or_equal_to: 0)
@@ -43,6 +69,7 @@ defmodule Dunda.Checkout.Quote do
     unit = get_field(changeset, :unit_price_cents)
     fee = get_field(changeset, :fee_cents)
     total = get_field(changeset, :total_cents)
+
     if Enum.all?([quantity, unit, fee, total], &is_integer/1) and total != unit * quantity + fee,
       do: add_error(changeset, :total_cents, "must equal quantity × unit price + fee"),
       else: changeset

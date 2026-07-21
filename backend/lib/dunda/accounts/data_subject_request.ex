@@ -27,7 +27,15 @@ defmodule Dunda.Accounts.DataSubjectRequest do
   @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(request, attrs) do
     request
-    |> cast(attrs, [:subject_email, :request_type, :status, :notes, :due_by, :completed_at, :user_id])
+    |> cast(attrs, [
+      :subject_email,
+      :request_type,
+      :status,
+      :notes,
+      :due_by,
+      :completed_at,
+      :user_id
+    ])
     |> validate_required([:request_type, :status])
     |> validate_inclusion(:request_type, @request_types)
     |> validate_inclusion(:status, @statuses)

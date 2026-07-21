@@ -45,7 +45,18 @@ defmodule DundaWeb.BillingController do
   end
 
   defp error_status(reason) when reason in [:not_found], do: :not_found
-  defp error_status(reason) when reason in [:idempotency_key_required, :invalid_order, :event_not_on_sale, :tier_not_on_sale, :max_per_order_exceeded, :invalid_quantity], do: :unprocessable_entity
+
+  defp error_status(reason)
+       when reason in [
+              :idempotency_key_required,
+              :invalid_order,
+              :event_not_on_sale,
+              :tier_not_on_sale,
+              :max_per_order_exceeded,
+              :invalid_quantity
+            ],
+       do: :unprocessable_entity
+
   defp error_status(:idempotency_conflict), do: :conflict
   defp error_status(:idempotency_incomplete), do: :conflict
   defp error_status(_), do: :bad_gateway

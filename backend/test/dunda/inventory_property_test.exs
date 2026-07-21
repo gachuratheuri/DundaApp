@@ -64,7 +64,9 @@ defmodule Dunda.InventoryPropertyTest do
   # Mirrors Dunda.Checkout's reservation guard exactly.
   defp reserve(pool_id, qty) do
     Repo.update_all(
-      from(p in InventoryPool, where: p.id == ^pool_id and p.capacity - p.reserved - p.sold >= ^qty),
+      from(p in InventoryPool,
+        where: p.id == ^pool_id and p.capacity - p.reserved - p.sold >= ^qty
+      ),
       inc: [reserved: qty, version: 1]
     )
   end
@@ -86,7 +88,9 @@ defmodule Dunda.InventoryPropertyTest do
   end
 
   defp op_generator do
-    StreamData.tuple({StreamData.member_of([:reserve, :confirm, :release]), StreamData.integer(1..5)})
+    StreamData.tuple(
+      {StreamData.member_of([:reserve, :confirm, :release]), StreamData.integer(1..5)}
+    )
   end
 
   property "reserved + sold never exceeds capacity, and neither ever goes negative, across any operation sequence" do

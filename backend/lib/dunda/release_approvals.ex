@@ -1,5 +1,5 @@
 defmodule Dunda.ReleaseApprovals do
-  @moduledoc """Read/write boundary for the Phase 4 release-approval ledger."""
+  @moduledoc "Read/write boundary for the Phase 4 release-approval ledger."
 
   import Ecto.Query, only: [from: 2]
 
@@ -30,16 +30,22 @@ defmodule Dunda.ReleaseApprovals do
   def create(attrs) do
     case %ReleaseApproval{} |> ReleaseApproval.changeset(attrs) |> Repo.insert() do
       {:ok, approval} = result ->
-        _ = Dunda.Audit.record(%{
-          action: "release.approval_created",
-          resource_type: "release_approval",
-          resource_id: approval.id,
-          metadata: %{feature: approval.feature, role: approval.approval_role, canary_percent: approval.canary_percent}
-        })
+        _ =
+          Dunda.Audit.record(%{
+            action: "release.approval_created",
+            resource_type: "release_approval",
+            resource_id: approval.id,
+            metadata: %{
+              feature: approval.feature,
+              role: approval.approval_role,
+              canary_percent: approval.canary_percent
+            }
+          })
 
         result
 
-      error -> error
+      error ->
+        error
     end
   end
 
@@ -49,20 +55,35 @@ defmodule Dunda.ReleaseApprovals do
 
     if byte_size(reason) in 3..1_000 do
       case Repo.get(ReleaseApproval, id) do
-        nil -> {:error, :not_found}
-        %{revoked_at: revoked_at} when not is_nil(revoked_at) -> {:error, :already_revoked}
+        nil ->
+          {:error, :not_found}
+
+        %{revoked_at: revoked_at} when not is_nil(revoked_at) ->
+          {:error, :already_revoked}
+
         approval ->
           approval
-          |> Ecto.Changeset.cast(%{revoked_at: DateTime.utc_now() |> DateTime.truncate(:second)}, [:revoked_at])
+          |> Ecto.Changeset.cast(
+            %{revoked_at: DateTime.utc_now() |> DateTime.truncate(:second)},
+            [:revoked_at]
+          )
           |> Repo.update()
           |> case do
             {:ok, revoked} = result ->
-              _ = Dunda.Audit.record(%{action: "release.approval_revoked", resource_type: "release_approval", resource_id: revoked.id, metadata: %{reason: reason}})
+              _ =
+                Dunda.Audit.record(%{
+                  action: "release.approval_revoked",
+                  resource_type: "release_approval",
+                  resource_id: revoked.id,
+                  metadata: %{reason: reason}
+                })
+
               result
 
-            error -> error
+            error ->
+              error
           end
-        end
+      end
     else
       {:error, :invalid_revocation}
     end
@@ -100,14 +121,15 @@ defmodule Dunda.ReleaseApprovals do
       approved: approved?(feature)
     }
   rescue
-    _ -> %{
-      feature: to_string(feature),
-      gate_enforced: Application.get_env(:dunda, :phase4_gate_enforced, true) == true,
-      required_roles: @roles,
-      active_roles: [],
-      canary_percent: 0,
-      approved: false
-    }
+    _ ->
+      %{
+        feature: to_string(feature),
+        gate_enforced: Application.get_env(:dunda, :phase4_gate_enforced, true) == true,
+        required_roles: @roles,
+        active_roles: [],
+        canary_percent: 0,
+        approved: false
+      }
   end
 
   @doc """

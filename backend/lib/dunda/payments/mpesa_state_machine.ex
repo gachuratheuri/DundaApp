@@ -45,18 +45,18 @@ defmodule Dunda.Payments.MpesaStateMachine do
       {:stop, :normal, data}
     else
       case Daraja.stk_push(phone, amount, idempotency_key) do
-      {:ok, checkout_request_id} ->
-        new_data = %{data | checkout_request_id: checkout_request_id}
-        # Index this process by CheckoutRequestID so the Daraja callback (which
-        # only carries the CheckoutRequestID, not our transaction_id) can route.
-        Dunda.Payments.register_checkout_id(checkout_request_id, new_data)
-        # Schedule the dead-letter poll in case the callback never arrives.
-        Process.send_after(self(), :poll_status, @callback_grace_ms)
-        {:next_state, :awaiting_callback, new_data}
+        {:ok, checkout_request_id} ->
+          new_data = %{data | checkout_request_id: checkout_request_id}
+          # Index this process by CheckoutRequestID so the Daraja callback (which
+          # only carries the CheckoutRequestID, not our transaction_id) can route.
+          Dunda.Payments.register_checkout_id(checkout_request_id, new_data)
+          # Schedule the dead-letter poll in case the callback never arrives.
+          Process.send_after(self(), :poll_status, @callback_grace_ms)
+          {:next_state, :awaiting_callback, new_data}
 
-      {:error, reason} ->
-        release(data)
-        {:stop, :normal, Map.put(data, :failure_reason, reason)}
+        {:error, reason} ->
+          release(data)
+          {:stop, :normal, Map.put(data, :failure_reason, reason)}
       end
     end
   end
@@ -72,12 +72,21 @@ defmodule Dunda.Payments.MpesaStateMachine do
     else
       case Ledger.settle(data.transaction_id, receipt) do
         {:ok, _entry} ->
-          Dunda.Workers.MpesaFulfillmentWorker.enqueue(data.transaction_id, data.ticket_tier_id, data.user_id, data.quantity)
+          Dunda.Workers.MpesaFulfillmentWorker.enqueue(
+            data.transaction_id,
+            data.ticket_tier_id,
+            data.user_id,
+            data.quantity
+          )
+
           Redix.command(:redix, ["DEL", "checkout_request:#{data.checkout_request_id}"])
           {:stop, :normal, Map.put(data, :receipt, receipt)}
 
         {:error, reason} ->
-          Logger.error("M-Pesa settlement rejected for #{data.transaction_id}: #{inspect(reason)}")
+          Logger.error(
+            "M-Pesa settlement rejected for #{data.transaction_id}: #{inspect(reason)}"
+          )
+
           {:stop, :normal, Map.put(data, :failure_reason, reason)}
       end
     end
@@ -111,12 +120,21 @@ defmodule Dunda.Payments.MpesaStateMachine do
       {:ok, %{"ResultCode" => "0"} = result} ->
         case Ledger.settle(data.transaction_id, result["MpesaReceiptNumber"]) do
           {:ok, _entry} ->
-            Dunda.Workers.MpesaFulfillmentWorker.enqueue(data.transaction_id, data.ticket_tier_id, data.user_id, data.quantity)
+            Dunda.Workers.MpesaFulfillmentWorker.enqueue(
+              data.transaction_id,
+              data.ticket_tier_id,
+              data.user_id,
+              data.quantity
+            )
+
             Redix.command(:redix, ["DEL", "checkout_request:#{data.checkout_request_id}"])
             {:stop, :normal, data}
 
           {:error, reason} ->
-            Logger.error("M-Pesa poll settlement rejected for #{data.transaction_id}: #{inspect(reason)}")
+            Logger.error(
+              "M-Pesa poll settlement rejected for #{data.transaction_id}: #{inspect(reason)}"
+            )
+
             {:stop, :normal, Map.put(data, :failure_reason, reason)}
         end
 

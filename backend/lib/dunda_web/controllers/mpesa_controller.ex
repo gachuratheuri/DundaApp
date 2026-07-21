@@ -20,28 +20,30 @@ defmodule DundaWeb.MpesaController do
       |> json(%{error: %{code: "invalid_webhook_signature"}})
       |> Plug.Conn.halt()
     else
-    stk = get_in(params, ["Body", "stkCallback"]) || %{}
-    checkout_request_id = stk["CheckoutRequestID"]
-    Logger.metadata(checkout_request_id: checkout_request_id)
+      stk = get_in(params, ["Body", "stkCallback"]) || %{}
+      checkout_request_id = stk["CheckoutRequestID"]
+      Logger.metadata(checkout_request_id: checkout_request_id)
 
-    normalised = %{
-      "ResultCode" => to_string(stk["ResultCode"]),
-      "MpesaReceiptNumber" => receipt_number(stk)
-    }
+      normalised = %{
+        "ResultCode" => to_string(stk["ResultCode"]),
+        "MpesaReceiptNumber" => receipt_number(stk)
+      }
 
-    case checkout_request_id && Payments.deliver_callback(checkout_request_id, normalised) do
-      :ok ->
-        # QA FI-01: push live settlement telemetry to any subscribed client
-        # socket so the app does not depend solely on HTTP status polling.
-        DundaWeb.SettlementChannel.broadcast_settlement(checkout_request_id, normalised)
-        :noop
+      case checkout_request_id && Payments.deliver_callback(checkout_request_id, normalised) do
+        :ok ->
+          # QA FI-01: push live settlement telemetry to any subscribed client
+          # socket so the app does not depend solely on HTTP status polling.
+          DundaWeb.SettlementChannel.broadcast_settlement(checkout_request_id, normalised)
+          :noop
 
-      other ->
-        Logger.warning("[Mpesa] Unroutable callback (#{inspect(other)}): #{inspect(Dunda.Logging.Redactor.redact(stk))}")
-    end
+        other ->
+          Logger.warning(
+            "[Mpesa] Unroutable callback (#{inspect(other)}): #{inspect(Dunda.Logging.Redactor.redact(stk))}"
+          )
+      end
 
-    # Daraja expects this exact acknowledgement shape.
-    json(conn, %{"ResultCode" => 0, "ResultDesc" => "Accepted"})
+      # Daraja expects this exact acknowledgement shape.
+      json(conn, %{"ResultCode" => 0, "ResultDesc" => "Accepted"})
     end
   end
 

@@ -55,7 +55,9 @@ defmodule Dunda.Scraper.HtmlScraper do
   @spec parse(binary(), atom()) :: [map()]
   def parse(html, site) when is_binary(html) do
     case Floki.parse_document(html) do
-      {:ok, doc} -> do_parse(doc, site)
+      {:ok, doc} ->
+        do_parse(doc, site)
+
       {:error, reason} ->
         Logger.warning("HtmlScraper: failed to parse #{site} document: #{inspect(reason)}")
         []
@@ -114,7 +116,8 @@ defmodule Dunda.Scraper.HtmlScraper do
         "date_text" =>
           card |> Floki.find("time") |> Floki.attribute("datetime") |> first() ||
             card |> Floki.find(".event-date, .date") |> Floki.text() |> clean(),
-        "price_text" => card |> Floki.find(".event-price, .price, .from-price") |> Floki.text() |> clean(),
+        "price_text" =>
+          card |> Floki.find(".event-price, .price, .from-price") |> Floki.text() |> clean(),
         "url" => card |> Floki.find("a") |> Floki.attribute("href") |> first()
       }
     end)
@@ -135,7 +138,8 @@ defmodule Dunda.Scraper.HtmlScraper do
         "date_text" =>
           card |> Floki.find("time") |> Floki.attribute("datetime") |> first() ||
             card |> Floki.find(".event-date, .date") |> Floki.text() |> clean(),
-        "price_text" => card |> Floki.find(".event-price, .price, .ticket-price") |> Floki.text() |> clean(),
+        "price_text" =>
+          card |> Floki.find(".event-price, .price, .ticket-price") |> Floki.text() |> clean(),
         "url" => card |> Floki.find("a") |> Floki.attribute("href") |> first()
       }
     end)
@@ -158,6 +162,7 @@ defmodule Dunda.Scraper.HtmlScraper do
     |> Enum.filter(fn event -> event["@type"] in ["Event", ["Event"]] end)
     |> Enum.map(fn event ->
       location = event["location"] || %{}
+
       %{
         "site" => "jsonld",
         "external_id" => jsonld_id(event),
@@ -183,11 +188,10 @@ defmodule Dunda.Scraper.HtmlScraper do
 
   defp jsonld_id(event) do
     event["@id"] || event["url"] ||
-      (:crypto.hash(:sha256, to_string(event["name"]) <> to_string(event["startDate"]))
-       |> Base.encode16(case: :lower))
+      :crypto.hash(:sha256, to_string(event["name"]) <> to_string(event["startDate"]))
+      |> Base.encode16(case: :lower)
   end
 
-  defp clean(nil), do: nil
   defp clean(text), do: text |> String.trim() |> String.replace(~r/\s+/, " ")
 
   defp blank_id?(%{"external_id" => id}), do: is_nil(id) or id == ""

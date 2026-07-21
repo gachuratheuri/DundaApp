@@ -1,73 +1,93 @@
 name: Deploy Backend
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'backend/**'
-      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Protected GitHub environment to deploy to
+        required: true
+        default: staging
+        type: choice
+        options: [staging, production]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
 
 jobs:
   build_and_deploy:
     runs-on: ubuntu-latest
-
+    environment: ${{ inputs.environment }}
     env:
-      MIX_ENV: test
-      PGHOST: localhost
-      PGUSER: postgres
-      PGPASSWORD: postgres
-
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+      REGISTRY: ${{ vars.CONTAINER_REGISTRY }}
+      IMAGE_NAME: ${{ vars.CONTAINER_IMAGE_NAME }}
+      NAMESPACE: ${{ vars.KUBERNETES_NAMESPACE }}
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Validate protected-environment configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$REGISTRY" || { echo "::error::CONTAINER_REGISTRY is required"; exit 1; }
+          test -n "$IMAGE_NAME" || { echo "::error::CONTAINER_IMAGE_NAME is required"; exit 1; }
+          test -n "$NAMESPACE" || { echo "::error::KUBERNETES_NAMESPACE is required"; exit 1; }
+          test -n "${{ secrets.REGISTRY_USERNAME }}" || { echo "::error::REGISTRY_USERNAME is required"; exit 1; }
+          test -n "${{ secrets.REGISTRY_PASSWORD }}" || { echo "::error::REGISTRY_PASSWORD is required"; exit 1; }
+          test -n "${{ secrets.KUBECONFIG_B64 }}" || { echo "::error::KUBECONFIG_B64 is required"; exit 1; }
 
-    - name: Set up Elixir
-      uses: erlef/setup-beam@v1
-      with:
-        elixir-version: '1.15'
-        otp-version: '26'
-        
-    - name: Restore dependencies cache
-      uses: actions/cache@v4
-      with:
-        path: |
-          backend/deps
-          backend/_build
-        key: ${{ runner.os }}-mix-${{ hashFiles('backend/mix.lock') }}
-        restore-keys: ${{ runner.os }}-mix-
-        
-    - name: Install dependencies
-      run: mix deps.get
-      working-directory: ./backend
-        
-    - name: Run Tests
-      run: mix test
-      working-directory: ./backend
+      - name: Checkout immutable source revision
+        uses: actions/checkout@v4
 
-    - name: Build and push Docker image
-      uses: docker/build-push-action@v5
-      with:
-        context: ./backend
-        push: false # Set to true when registry is configured
-        tags: dundaregistry.azurecr.io/dunda-api:latest
-        
-    - name: Deploy to Kubernetes
-      run: |
-        echo "Configure your Kubeconfig here"
-        # kubectl apply -f infra/k8s/
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Authenticate to registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: Build and publish commit-addressed image
+        id: image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          provenance: mode=max
+          sbom: true
+
+      - name: Configure Kubernetes credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/kube"
+          echo '${{ secrets.KUBECONFIG_B64 }}' | base64 --decode > "$RUNNER_TEMP/kube/config"
+          chmod 600 "$RUNNER_TEMP/kube/config"
+          echo "KUBECONFIG=$RUNNER_TEMP/kube/config" >> "$GITHUB_ENV"
+
+      - name: Render immutable deployment manifest
+        shell: bash
+        env:
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          set -euo pipefail
+          digest="${IMAGE_DIGEST#sha256:}"
+          sed \
+            -e "s|namespace: default|namespace: ${NAMESPACE}|g" \
+            -e "s|dundaregistry.azurecr.io/dunda-api@sha256:REPLACE_WITH_SIGNED_DIGEST|${REGISTRY}/${IMAGE_NAME}@sha256:${digest}|" \
+            infra/k8s/deployment.yaml > "$RUNNER_TEMP/deployment.yaml"
+
+      - name: Apply manifests and verify rollout
+        shell: bash
+        run: |
+          set -euo pipefail
+          for manifest in infra/k8s/service.yaml infra/k8s/networkpolicy.yaml infra/k8s/dunda-api-hpa.yaml; do
+            sed "s|namespace: default|namespace: ${NAMESPACE}|g" "$manifest" | kubectl apply -f -
+          done
+          kubectl apply -f "$RUNNER_TEMP/deployment.yaml"
+          kubectl -n "$NAMESPACE" rollout status deployment/dunda-api --timeout=10m

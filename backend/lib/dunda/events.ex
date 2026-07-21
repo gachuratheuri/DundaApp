@@ -1,8 +1,8 @@
 defmodule Dunda.Events do
   @moduledoc """
   Read-side context for event discovery. Event metadata is read from the
-  replica; live remaining inventory is read from Redis (authoritative) with a
-  fallback to capacity when no inventory key has been seeded yet. Events carry
+  replica; discovery availability may use the rebuildable Redis projection and
+  falls back to PostgreSQL truth when that projection is absent. Events carry
   their ticket tiers, each annotated with a live per-tier `remaining`.
   """
   import Ecto.Query, only: [from: 2]
@@ -27,12 +27,18 @@ defmodule Dunda.Events do
 
     query =
       from e in Event,
-        where: e.status == "published" and e.starts_at >= ^from_time and e.starts_at < ^until_time,
+        where:
+          e.status == "published" and e.starts_at >= ^from_time and e.starts_at < ^until_time,
         order_by: [asc: e.starts_at, asc: e.id],
         limit: ^(limit + 1),
         preload: [:ticket_tiers]
 
-    query = query |> apply_public_filter(:category, Keyword.get(opts, :category)) |> apply_public_filter(:city, Keyword.get(opts, :city)) |> apply_cursor(cursor)
+    query =
+      query
+      |> apply_public_filter(:category, Keyword.get(opts, :category))
+      |> apply_public_filter(:city, Keyword.get(opts, :city))
+      |> apply_cursor(cursor)
+
     events = query |> ReadRepo.all() |> Enum.map(&annotate_remaining/1)
     {page, rest} = Enum.split(events, limit)
     %{events: page, next_cursor: if(rest == [], do: nil, else: encode_cursor(List.last(page)))}
@@ -77,7 +83,13 @@ defmodule Dunda.Events do
   def get_public_event(id, opts \\ []) do
     now = Keyword.get(opts, :now, DateTime.utc_now())
     until_time = Keyword.get(opts, :until, DateTime.add(now, 365, :day))
-    case ReadRepo.one(from e in Event, where: e.id == ^id and e.status == "published" and e.starts_at >= ^now and e.starts_at < ^until_time) do
+
+    case ReadRepo.one(
+           from e in Event,
+             where:
+               e.id == ^id and e.status == "published" and e.starts_at >= ^now and
+                 e.starts_at < ^until_time
+         ) do
       nil -> nil
       event -> event |> ReadRepo.preload(:ticket_tiers) |> annotate_remaining()
     end
@@ -91,6 +103,7 @@ defmodule Dunda.Events do
   end
 
   defp decode_cursor(nil), do: nil
+
   defp decode_cursor(cursor) when is_binary(cursor) do
     with {:ok, raw} <- Base.url_decode64(cursor, padding: false),
          [starts_at, id] <- String.split(raw, "|", parts: 2),
@@ -101,19 +114,28 @@ defmodule Dunda.Events do
       _ -> nil
     end
   end
+
   defp decode_cursor(_), do: nil
 
   defp apply_cursor(query, nil), do: query
-  defp apply_cursor(query, {starts_at, id}), do: from e in query, where: e.starts_at > ^starts_at or (e.starts_at == ^starts_at and e.id > ^id)
+
+  defp apply_cursor(query, {starts_at, id}),
+    do:
+      from(e in query,
+        where: e.starts_at > ^starts_at or (e.starts_at == ^starts_at and e.id > ^id)
+      )
 
   defp apply_public_filter(query, _field, nil), do: query
   defp apply_public_filter(query, _field, ""), do: query
-  defp apply_public_filter(query, :category, value), do: from e in query, where: e.category == ^value
-  defp apply_public_filter(query, :city, value), do: from e in query, where: e.city == ^value
+
+  defp apply_public_filter(query, :category, value),
+    do: from(e in query, where: e.category == ^value)
+
+  defp apply_public_filter(query, :city, value), do: from(e in query, where: e.city == ^value)
 
   @doc """
-  Create a new event manually with safe Redis inventory seeding **and** its
-  authoritative PostgreSQL inventory pool.
+  Creates a new event, its authoritative PostgreSQL inventory pool, and a
+  durable outbox intent for the disposable Redis projection.
 
   Before this, no application code path ever created a
   `Dunda.Checkout.InventoryPool` row for an event — only a one-time
@@ -147,8 +169,16 @@ defmodule Dunda.Events do
         event_id: event.id
       })
     end)
-    |> Ecto.Multi.run(:inventory, fn _repo, %{event: event} ->
-      seed_inventory(event)
+    |> Ecto.Multi.insert(:inventory_projection_intent, fn %{inventory_pool: pool} ->
+      Dunda.Checkout.OutboxEvent.changeset(%Dunda.Checkout.OutboxEvent{}, %{
+        event_key: "inventory-pool:#{pool.id}:v#{pool.version}",
+        event_type: "inventory_projection_changed",
+        aggregate_type: "inventory_pool",
+        aggregate_id: pool.id,
+        payload: %{inventory_pool_id: pool.id, version: pool.version},
+        status: "pending",
+        available_at: DateTime.utc_now() |> DateTime.truncate(:second)
+      })
     end)
     |> Repo.transaction()
     |> case do
@@ -189,24 +219,44 @@ defmodule Dunda.Events do
     {count, _} =
       Repo.update_all(
         from(p in InventoryPool,
-          where: p.event_id == ^id and is_nil(p.ticket_tier_id) and p.reserved + p.sold <= ^capacity
+          where:
+            p.event_id == ^id and is_nil(p.ticket_tier_id) and p.reserved + p.sold <= ^capacity
         ),
-        set: [capacity: capacity]
+        set: [capacity: capacity],
+        inc: [version: 1]
       )
 
     cond do
       count == 1 ->
+        pool = Repo.get_by!(InventoryPool, event_id: id, ticket_tier_id: nil)
+        enqueue_inventory_projection!(pool)
         :ok
 
       # No untiered pool exists for this event (e.g. a pre-fix event that
       # hasn't been backfilled, or a tiered event) — nothing to keep in
       # sync; not this function's concern.
-      not Repo.exists?(from(p in InventoryPool, where: p.event_id == ^id and is_nil(p.ticket_tier_id))) ->
+      not Repo.exists?(
+        from(p in InventoryPool, where: p.event_id == ^id and is_nil(p.ticket_tier_id))
+      ) ->
         :ok
 
       true ->
         {:error, :capacity_below_committed_inventory}
     end
+  end
+
+  defp enqueue_inventory_projection!(pool) do
+    %Dunda.Checkout.OutboxEvent{}
+    |> Dunda.Checkout.OutboxEvent.changeset(%{
+      event_key: "inventory-pool:#{pool.id}:v#{pool.version}",
+      event_type: "inventory_projection_changed",
+      aggregate_type: "inventory_pool",
+      aggregate_id: pool.id,
+      payload: %{inventory_pool_id: pool.id, version: pool.version},
+      status: "pending",
+      available_at: DateTime.utc_now() |> DateTime.truncate(:second)
+    })
+    |> Repo.insert!(on_conflict: :nothing, conflict_target: :event_key)
   end
 
   defp annotate_remaining(%Event{} = event) do
@@ -234,15 +284,4 @@ defmodule Dunda.Events do
   # Tolerate callers that built an %Event{} without preloading tiers.
   defp tiers_or_empty(%Ecto.Association.NotLoaded{}), do: []
   defp tiers_or_empty(tiers) when is_list(tiers), do: tiers
-
-  defp seed_inventory(%Event{id: id, capacity: capacity}) do
-    key = Inventory.inventory_key(Inventory.event_pool(id))
-
-    case Redix.command(:redix, ["SET", key, to_string(capacity), "NX"]) do
-      {:ok, _} -> {:ok, :seeded}
-      {:error, reason} -> {:error, reason}
-    end
-  rescue
-    e -> {:error, e}
-  end
 end

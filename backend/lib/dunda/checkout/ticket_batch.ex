@@ -5,10 +5,11 @@ defmodule Dunda.Checkout.TicketBatch do
   schema "ticket_batches" do
     field :quantity, :integer
     field :status, :string, default: "created"
-    belongs_to :payment_line_item, Dunda.Checkout.PaymentLineItem
+    belongs_to :payment_line_item, Dunda.Checkout.PaymentLineItem, type: :binary_id
     has_many :tickets, Dunda.Ticketing.Ticket
     timestamps()
   end
+
   def changeset(batch, attrs) do
     batch
     |> cast(attrs, [:payment_line_item_id, :quantity, :status])

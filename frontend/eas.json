@@ -1,0 +1,44 @@
+{
+  "cli": {
+    "version": ">= 20.2.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "http://10.0.2.2:4000",
+        "EXPO_PUBLIC_ENABLE_DEMO_DATA": "true"
+      },
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "channel": "preview",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://staging-api.tiketa.ke",
+        "EXPO_PUBLIC_ENABLE_DEMO_DATA": "false"
+      },
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "production": {
+      "channel": "production",
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://api.tiketa.ke",
+        "EXPO_PUBLIC_ENABLE_DEMO_DATA": "false"
+      },
+      "android": {
+        "buildType": "app-bundle"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

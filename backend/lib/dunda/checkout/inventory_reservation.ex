@@ -9,13 +9,22 @@ defmodule Dunda.Checkout.InventoryReservation do
     field :expires_at, :utc_datetime
     field :released_at, :utc_datetime
     field :consumed_at, :utc_datetime
-    belongs_to :payment_intent, Dunda.Checkout.PaymentIntent
-    belongs_to :inventory_pool, Dunda.Checkout.InventoryPool
+    belongs_to :payment_intent, Dunda.Checkout.PaymentIntent, type: :binary_id
+    belongs_to :inventory_pool, Dunda.Checkout.InventoryPool, type: :binary_id
     timestamps()
   end
+
   def changeset(reservation, attrs) do
     reservation
-    |> cast(attrs, [:payment_intent_id, :inventory_pool_id, :quantity, :status, :expires_at, :released_at, :consumed_at])
+    |> cast(attrs, [
+      :payment_intent_id,
+      :inventory_pool_id,
+      :quantity,
+      :status,
+      :expires_at,
+      :released_at,
+      :consumed_at
+    ])
     |> validate_required([:payment_intent_id, :inventory_pool_id, :quantity, :status, :expires_at])
     |> validate_number(:quantity, greater_than: 0)
     |> validate_inclusion(:status, @statuses)

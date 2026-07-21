@@ -22,9 +22,9 @@ defmodule Dunda.Workers.IpnVerificationWorker do
       {:cancel, :phase_0_containment}
     else
       case Billing.confirm_order(otid) do
-      {:ok, _order} -> :ok
-      {:error, :order_not_found} -> {:cancel, :order_not_found}
-      {:error, reason} -> {:error, reason}
+        {:ok, _order} -> :ok
+        {:error, :order_not_found} -> {:cancel, :order_not_found}
+        {:error, reason} -> {:error, reason}
       end
     end
   end

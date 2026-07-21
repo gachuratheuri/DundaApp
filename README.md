@@ -25,29 +25,33 @@ ticket validation at the venue gate, and M-Pesa-first payments.
                    ▼                                         │ callback
             ┌─────────────────────────────────────────────────────┐
             │            Elixir / OTP cluster (backend)            │
-            │  Horde-registered InventoryPoolServer per tier       │
-            │  MpesaStateMachine  ·  Oban EscrowReclaimer          │
+            │  Checkout aggregate · durable outbox · Oban workers  │
+            │  Provider adapters · explicit payment state machine  │
             └───────┬───────────────────────┬─────────────────────┘
-                    │ atomic Lua            │ Ecto
+                    │ rebuildable cache     │ authoritative transactions
                     ▼                       ▼
               ┌──────────┐           ┌──────────────┐
               │  Redis   │           │  PostgreSQL  │
-              │ (escrow) │           │ primary+rep. │
+              │projection│           │ primary+rep. │
               └──────────┘           └──────────────┘
 ```
 
-## Core guarantees
+## Enforced invariants
 
-- **No oversell** — a single atomic Redis Lua script performs check + decrement
-  + escrow; inventory is further isolated to one GenServer per tier via a
-  CRDT-backed `Horde.Registry`.
-- **No payment is lost** — the M-Pesa state machine treats the Daraja callback
-  as a fast path and a dead-letter poll as the authoritative fallback;
-  settlement is idempotent on the receipt number.
-- **No escrow leak** — keyspace notifications reclaim expired escrow on the fast
-  path; an Oban job (`EscrowReclaimer`) is the authoritative sweep.
-- **PII protected** — AES-256-GCM column encryption plus an HMAC blind index for
-  lookups (Kenya ODPC alignment).
+- **Inventory authority is PostgreSQL** — guarded updates, row locks, and CHECK
+  constraints preserve `sold + reserved <= capacity`; Redis is disposable.
+- **Payment effects are idempotent** — provider identifiers, settlements,
+  ticket batches, and outbox keys are uniquely constrained. Uncertain provider
+  outcomes remain explicit and are reconciled rather than discarded.
+- **Fulfilment and accounting are transactional** — settlement, reservation
+  conversion, ticket creation, balanced journal entries, state transitions,
+  and notification intents commit together.
+- **PII controls are field-specific** — sensitive contact and payout fields use
+  authenticated encryption and blind indexes where equality lookup is needed.
+
+These are design and database invariants, not a production-readiness claim.
+Release remains prohibited until the documented integration, concurrency,
+recovery, security, and reconciliation gates have produced current evidence.
 
 ## Quick start
 
@@ -82,7 +86,8 @@ The organiser portal at `/portal` is session-authenticated (email/password via
 `/portal/login`); all LiveViews are guarded by an `on_mount` hook plus a plug.
 
 The app consumes these through `frontend/src/api/client.ts` (`useEvents`,
-`useTickets`, `checkout`) with graceful fallback to bundled sample data.
+`useTickets`, `checkout`). Ticket failures return no fabricated credential;
+catalogue demo data is development-only and explicitly labelled.
 
 ## Status
 

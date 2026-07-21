@@ -33,7 +33,8 @@ defmodule Mix.Tasks.Dunda.MutationTest do
       file: "lib/dunda/checkout.ex",
       original: "p.capacity - p.reserved - p.sold >= ^quote.quantity",
       mutated: "p.capacity - p.reserved - p.sold > ^quote.quantity",
-      description: "inventory reservation guard >= -> > (Invariant 1: sold + reserved <= capacity)",
+      description:
+        "inventory reservation guard >= -> > (Invariant 1: sold + reserved <= capacity)",
       test_file: "test/dunda/inventory_property_test.exs"
     },
     %{
@@ -54,7 +55,8 @@ defmodule Mix.Tasks.Dunda.MutationTest do
       file: "lib/dunda/checkout/payment_intent.ex",
       original: "def transition_allowed?(from, to), do: to in Map.get(@transitions, from, [])",
       mutated: "def transition_allowed?(_from, _to), do: true",
-      description: "payment-intent state machine transition guard disabled (Invariant 8: monotonicity)",
+      description:
+        "payment-intent state machine transition guard disabled (Invariant 8: monotonicity)",
       test_file: "test/dunda/payment_intent_transition_property_test.exs"
     }
   ]
@@ -75,10 +77,14 @@ defmodule Mix.Tasks.Dunda.MutationTest do
 
     cond do
       errors != [] ->
-        Mix.raise("#{length(errors)} mutant run(s) errored (see output above) — fix the harness before trusting these results")
+        Mix.raise(
+          "#{length(errors)} mutant run(s) errored (see output above) — fix the harness before trusting these results"
+        )
 
       survivors != [] ->
-        Mix.raise("#{length(survivors)} mutant(s) SURVIVED — the corresponding test does not cover this guard")
+        Mix.raise(
+          "#{length(survivors)} mutant(s) SURVIVED — the corresponding test does not cover this guard"
+        )
 
       true ->
         Mix.shell().info("PASS: all #{length(@mutations)} mutants were killed.")
@@ -97,7 +103,7 @@ defmodule Mix.Tasks.Dunda.MutationTest do
       apply_mutation!(scratch, mutation)
       partition = "mutant#{System.unique_integer([:positive])}"
 
-      {output, exit_code} =
+      {_output, exit_code} =
         System.cmd("mix", ["test", mutation.test_file],
           cd: scratch,
           env: [{"MIX_ENV", "test"}, {"MIX_TEST_PARTITION", partition}],

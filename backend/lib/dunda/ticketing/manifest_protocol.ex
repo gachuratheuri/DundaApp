@@ -25,13 +25,19 @@ defmodule Dunda.Ticketing.ManifestProtocol do
 
   defp configured_key(name) do
     value = Application.get_env(:dunda, name, "") |> to_string()
+
     case Base.decode64(value) do
       {:ok, raw} when byte_size(raw) == 32 -> raw
       _ -> raise ArgumentError, "#{name} must be base64-encoded 32-byte Ed25519 key material"
     end
   end
 
-  defp sort_value(map) when is_map(map), do: map |> Enum.sort_by(fn {key, _} -> to_string(key) end) |> Map.new(fn {key, value} -> {to_string(key), sort_value(value)} end)
+  defp sort_value(map) when is_map(map),
+    do:
+      map
+      |> Enum.sort_by(fn {key, _} -> to_string(key) end)
+      |> Map.new(fn {key, value} -> {to_string(key), sort_value(value)} end)
+
   defp sort_value(list) when is_list(list), do: Enum.map(list, &sort_value/1)
   defp sort_value(value), do: value
 end

@@ -55,11 +55,16 @@ defmodule Dunda.ContractCase do
         end)
       end) || raise "no operation with operationId=#{operation_id} in dunda.json"
 
-    response = operation["responses"][status_key] || raise "operationId=#{operation_id} has no #{status_key} response"
+    response =
+      operation["responses"][status_key] ||
+        raise "operationId=#{operation_id} has no #{status_key} response"
+
     response_object = deref(response, raw_spec())
     schema_ref = get_in(response_object, ["content", "application/json", "schema"])
     schema_object = deref(schema_ref, raw_spec())
-    schema_object["$ref"] || raise "operationId=#{operation_id} response #{status_key} has no schema $ref"
+
+    schema_object["$ref"] ||
+      raise "operationId=#{operation_id} response #{status_key} has no schema $ref"
   end
 
   defp deref(%{"$ref" => "#/" <> pointer}, root) do
@@ -81,7 +86,8 @@ defmodule Dunda.ContractCase do
 
       {:error, errors} ->
         raise ExUnit.AssertionError,
-          message: "response for #{operation_id} (#{status}) does not match #{ref}:\n#{inspect(errors, pretty: true)}\n\ndata:\n#{inspect(data, pretty: true)}"
+          message:
+            "response for #{operation_id} (#{status}) does not match #{ref}:\n#{inspect(errors, pretty: true)}\n\ndata:\n#{inspect(data, pretty: true)}"
     end
   end
 end

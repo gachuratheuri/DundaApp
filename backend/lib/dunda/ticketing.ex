@@ -86,6 +86,7 @@ defmodule Dunda.Ticketing do
     multi =
       Enum.reduce(1..count, Multi.new(), fn index, acc ->
         ticket_id = Ecto.UUID.generate()
+
         ticket_changeset =
           Ticket.changeset(%Ticket{}, %{
             id: ticket_id,
@@ -144,7 +145,8 @@ defmodule Dunda.Ticketing do
 
   @doc "Whether an order has at least its authoritative quantity of tickets."
   @spec fulfilled_order?(integer(), pos_integer()) :: boolean()
-  def fulfilled_order?(order_id, quantity) when is_integer(order_id) and is_integer(quantity) and quantity > 0 do
+  def fulfilled_order?(order_id, quantity)
+      when is_integer(order_id) and is_integer(quantity) and quantity > 0 do
     Repo.aggregate(from(t in Ticket, where: t.order_id == ^order_id), :count) >= quantity
   end
 

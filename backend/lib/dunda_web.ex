@@ -23,7 +23,7 @@ defmodule DundaWeb do
 
       import Plug.Conn
 
-      action_fallback DundaWeb.FallbackController
+      action_fallback(DundaWeb.FallbackController)
     end
   end
 

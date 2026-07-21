@@ -39,7 +39,9 @@ defmodule Dunda.Vault.Rotation do
 
   @spec reencrypt_all() :: %{module() => outcome()}
   def reencrypt_all do
-    Map.new(@encrypted_targets, fn {schema, fields} -> {schema, reencrypt_schema(schema, fields)} end)
+    Map.new(@encrypted_targets, fn {schema, fields} ->
+      {schema, reencrypt_schema(schema, fields)}
+    end)
   end
 
   @spec rehash_blind_index() :: outcome()
@@ -88,7 +90,13 @@ defmodule Dunda.Vault.Rotation do
   end
 
   defp rehash_one(user, acc) do
-    changeset = Ecto.Changeset.force_change(Ecto.Changeset.change(user), :phone_msisdn_hash, user.phone_msisdn)
+    changeset =
+      Ecto.Changeset.force_change(
+        Ecto.Changeset.change(user),
+        :phone_msisdn_hash,
+        user.phone_msisdn
+      )
+
     persist(changeset, acc)
   end
 

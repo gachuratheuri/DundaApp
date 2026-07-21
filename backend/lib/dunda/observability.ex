@@ -1,5 +1,5 @@
 defmodule Dunda.Observability do
-  @moduledoc """Small dependency-free metrics registry for operational probes."""
+  @moduledoc "Small dependency-free metrics registry for operational probes."
 
   use GenServer
 
@@ -21,8 +21,16 @@ defmodule Dunda.Observability do
     :ok
   end
 
+  @doc "Observes an internal domain-operation latency independently of HTTP routing."
+  @spec observe_operation(atom() | String.t(), non_neg_integer()) :: :ok
+  def observe_operation(operation, duration_us) do
+    update({:operation_latency_bucket, to_string(operation), latency_bucket_ms(duration_us)}, 1)
+    :ok
+  end
+
   defp latency_bucket_ms(duration_us) do
     duration_ms = duration_us / 1_000
+
     Enum.find(@histogram_buckets_ms, :infinity, fn
       :infinity -> true
       boundary -> duration_ms <= boundary
@@ -44,7 +52,9 @@ defmodule Dunda.Observability do
       counters
       |> Enum.filter(fn {key, _count} -> match?({:latency_bucket, ^route, _boundary}, key) end)
       |> Enum.map(fn {{:latency_bucket, _route, boundary}, count} -> {boundary, count} end)
-      |> Enum.sort_by(fn {boundary, _count} -> if boundary == :infinity, do: :infinity, else: boundary end)
+      |> Enum.sort_by(fn {boundary, _count} ->
+        if boundary == :infinity, do: :infinity, else: boundary
+      end)
 
     total = buckets |> Enum.map(&elem(&1, 1)) |> Enum.sum()
 
@@ -58,6 +68,23 @@ defmodule Dunda.Observability do
         if new_cumulative >= target, do: {:halt, boundary}, else: {:cont, new_cumulative}
       end)
     end
+  end
+
+  @spec operation_latency_percentile(map(), atom() | String.t(), number()) ::
+          number() | :infinity | nil
+  def operation_latency_percentile(counters, operation, percentile)
+      when percentile > 0 and percentile <= 100 do
+    operation = to_string(operation)
+
+    counters
+    |> Enum.reduce(%{}, fn
+      {{:operation_latency_bucket, ^operation, boundary}, count}, acc ->
+        Map.put(acc, {:latency_bucket, operation, boundary}, count)
+
+      _, acc ->
+        acc
+    end)
+    |> latency_percentile(operation, percentile)
   end
 
   @spec increment(term(), integer()) :: :ok
@@ -103,7 +130,10 @@ defmodule Dunda.Observability do
 
     lines =
       (all
-       |> Enum.reject(fn {key, _} -> match?({:latency_bucket, _route, _boundary}, key) end)
+       |> Enum.reject(fn {key, _} ->
+         match?({:latency_bucket, _route, _boundary}, key) or
+           match?({:operation_latency_bucket, _operation, _boundary}, key)
+       end)
        |> Enum.flat_map(&render_metric_line/1)) ++ render_latency_histograms(all)
 
     (Enum.sort(lines) ++ ["dunda_oban_queue_depth #{oban_queue_depth()}"])
@@ -137,9 +167,21 @@ defmodule Dunda.Observability do
   # time per route, not stored pre-cumulated (storing cumulative counts
   # directly would mean every observation writes to N buckets instead of 1).
   defp render_latency_histograms(all) do
-    all
-    |> Enum.filter(fn {key, _} -> match?({:latency_bucket, _route, _boundary}, key) end)
-    |> Enum.map(fn {{:latency_bucket, route, boundary}, count} -> {route, boundary, count} end)
+    request_entries =
+      all
+      |> Enum.filter(fn {key, _} -> match?({:latency_bucket, _route, _boundary}, key) end)
+      |> Enum.map(fn {{:latency_bucket, route, boundary}, count} -> {route, boundary, count} end)
+
+    operation_entries =
+      all
+      |> Enum.filter(fn {key, _} ->
+        match?({:operation_latency_bucket, _operation, _boundary}, key)
+      end)
+      |> Enum.map(fn {{:operation_latency_bucket, operation, boundary}, count} ->
+        {"operation:#{operation}", boundary, count}
+      end)
+
+    (request_entries ++ operation_entries)
     |> Enum.group_by(fn {route, _boundary, _count} -> route end)
     |> Enum.flat_map(fn {route, entries} -> cumulative_bucket_lines(route, entries) end)
   end
@@ -153,7 +195,9 @@ defmodule Dunda.Observability do
     {lines, _cumulative} =
       Enum.map_reduce(sorted, 0, fn {_route, boundary, count}, cumulative ->
         running = cumulative + count
-        {~s(dunda_latency_bucket_count{route="#{escape(route)}",le="#{le_label(boundary)}"} #{running}), running}
+
+        {~s(dunda_latency_bucket_count{route="#{escape(route)}",le="#{le_label(boundary)}"} #{running}),
+         running}
       end)
 
     lines
@@ -185,7 +229,14 @@ defmodule Dunda.Observability do
 
   @impl true
   def init(_opts) do
-    :ets.new(@table, [:named_table, :public, :set, read_concurrency: true, write_concurrency: true])
+    :ets.new(@table, [
+      :named_table,
+      :public,
+      :set,
+      read_concurrency: true,
+      write_concurrency: true
+    ])
+
     {:ok, %{}}
   end
 

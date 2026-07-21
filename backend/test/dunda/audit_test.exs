@@ -23,7 +23,9 @@ defmodule Dunda.AuditTest do
              })
 
     assert_raise Postgrex.Error, ~r/audit_events are append-only/, fn ->
-      Repo.update_all(from(e in Dunda.Audit.Event, where: e.id == ^event.id), set: [action: "tampered"])
+      Repo.update_all(from(e in Dunda.Audit.Event, where: e.id == ^event.id),
+        set: [action: "tampered"]
+      )
     end
   end
 end

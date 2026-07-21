@@ -61,12 +61,17 @@ defmodule Mix.Tasks.Dunda.LoadTest do
     {wall_us, results} =
       :timer.tc(fn ->
         quotes
-        |> Task.async_stream(&time_reservation(user.id, &1), max_concurrency: concurrency, timeout: 30_000)
+        |> Task.async_stream(&time_reservation(user.id, &1),
+          max_concurrency: concurrency,
+          timeout: 30_000
+        )
         |> Enum.map(fn {:ok, result} -> result end)
       end)
 
     successes = Enum.count(results, &match?({:ok, _us}, &1))
-    latencies_us = results |> Enum.filter(&match?({:ok, _us}, &1)) |> Enum.map(&elem(&1, 1)) |> Enum.sort()
+
+    latencies_us =
+      results |> Enum.filter(&match?({:ok, _us}, &1)) |> Enum.map(&elem(&1, 1)) |> Enum.sort()
 
     report(requests, successes, latencies_us, wall_us)
   end
@@ -75,7 +80,11 @@ defmodule Mix.Tasks.Dunda.LoadTest do
     key = Base.encode16(:crypto.strong_rand_bytes(10))
     started = System.monotonic_time(:microsecond)
 
-    case Checkout.create_payment_intent(user_id, %{quote_id: quote.id, idempotency_key: key, phone: "254712345678"}) do
+    case Checkout.create_payment_intent(user_id, %{
+           quote_id: quote.id,
+           idempotency_key: key,
+           phone: "254712345678"
+         }) do
       {:ok, _intent} -> {:ok, System.monotonic_time(:microsecond) - started}
       {:error, reason} -> {:error, reason}
     end

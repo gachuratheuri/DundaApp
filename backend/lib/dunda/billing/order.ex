@@ -29,7 +29,6 @@ defmodule Dunda.Billing.Order do
 
     field :status, :string, default: "pending"
     field :kind, :string, default: "primary"
-    field :resale_listing_id, :binary_id
     field :refund_status, :string, default: "none"
     field :refunded_amount_cents, :integer, default: 0
     field :refunded_at, :utc_datetime
@@ -57,8 +56,12 @@ defmodule Dunda.Billing.Order do
       :currency,
       :quantity,
       :phone_encrypted,
-      :event_id, :ticket_tier_id, :idempotency_key,
-      :organisation_id, :kind, :resale_listing_id,
+      :event_id,
+      :ticket_tier_id,
+      :idempotency_key,
+      :organisation_id,
+      :kind,
+      :resale_listing_id,
       :user_id
     ])
     |> validate_required([:merchant_reference, :amount_cents, :event_id])
@@ -70,15 +73,25 @@ defmodule Dunda.Billing.Order do
     |> validate_number(:refunded_amount_cents, greater_than_or_equal_to: 0)
     |> validate_resale_link()
     |> unique_constraint(:merchant_reference)
-    |> unique_constraint([:user_id, :idempotency_key], name: :orders_user_id_idempotency_key_index)
+    |> unique_constraint([:user_id, :idempotency_key],
+      name: :orders_user_id_idempotency_key_index
+    )
   end
 
   @spec status_changeset(t(), map()) :: Ecto.Changeset.t()
   def status_changeset(order, attrs) do
     order
     |> cast(attrs, [
-      :order_tracking_id, :status, :kind, :resale_listing_id, :refund_status,
-      :refunded_amount_cents, :refunded_at, :payout_status, :pesapal_status, :redirect_url
+      :order_tracking_id,
+      :status,
+      :kind,
+      :resale_listing_id,
+      :refund_status,
+      :refunded_amount_cents,
+      :refunded_at,
+      :payout_status,
+      :pesapal_status,
+      :redirect_url
     ])
     |> validate_inclusion(:status, @statuses)
     |> validate_inclusion(:kind, @kinds)
@@ -101,9 +114,12 @@ defmodule Dunda.Billing.Order do
 
   defp validate_state_transition(changeset) do
     case get_change(changeset, :status) do
-      nil -> changeset
+      nil ->
+        changeset
+
       next ->
         current = changeset.data.status || "pending"
+
         allowed = %{
           "pending" => ~w(pending completed failed invalid manual_review),
           "completed" => ~w(completed partially_refunded refunded manual_review),
@@ -116,7 +132,9 @@ defmodule Dunda.Billing.Order do
           "manual_review" => ~w(manual_review partially_refunded refunded)
         }
 
-        if next in Map.get(allowed, current, []), do: changeset, else: add_error(changeset, :status, "invalid monotonic state transition")
+        if next in Map.get(allowed, current, []),
+          do: changeset,
+          else: add_error(changeset, :status, "invalid monotonic state transition")
     end
   end
 end

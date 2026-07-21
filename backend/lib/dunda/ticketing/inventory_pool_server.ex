@@ -90,16 +90,19 @@ defmodule Dunda.Ticketing.InventoryPoolServer do
         case initial_count(state.pool_id) do
           {:ok, count} ->
             case Redix.command(:redix, ["SET", state.inv_key, to_string(count), "NX"]) do
-              {:ok, _} -> :ok
+              {:ok, _} ->
+                :ok
+
               {:error, reason} ->
-                Logger.error("[InventoryPool] failed to SET counter for #{state.inv_key}: #{inspect(reason)}")
+                Logger.error(
+                  "[InventoryPool] failed to SET counter for #{state.inv_key}: #{inspect(reason)}"
+                )
+
                 raise "failed to seed inventory counter: #{inspect(reason)}"
             end
 
           {:error, reason} ->
-            Logger.error(
-              "[InventoryPool] cannot seed #{state.inv_key}: #{inspect(reason)}"
-            )
+            Logger.error("[InventoryPool] cannot seed #{state.inv_key}: #{inspect(reason)}")
             raise "failed to compute initial count for seeding: #{inspect(reason)}"
         end
 
@@ -107,7 +110,10 @@ defmodule Dunda.Ticketing.InventoryPoolServer do
         :ok
 
       {:error, reason} ->
-        Logger.error("[InventoryPool] failed to check EXISTS for #{state.inv_key}: #{inspect(reason)}")
+        Logger.error(
+          "[InventoryPool] failed to check EXISTS for #{state.inv_key}: #{inspect(reason)}"
+        )
+
         raise "failed to check existing inventory: #{inspect(reason)}"
     end
   end
@@ -143,7 +149,14 @@ defmodule Dunda.Ticketing.InventoryPoolServer do
   @impl true
   def handle_call({:acquire, owner_id, quantity, user_id}, _from, state) do
     keys = [state.inv_key, state.escrow_key, "user_escrow:#{user_id}"]
-    argv = [to_string(owner_id), to_string(quantity), to_string(@escrow_ttl_ms), to_string(user_id)]
+
+    argv = [
+      to_string(owner_id),
+      to_string(quantity),
+      to_string(@escrow_ttl_ms),
+      to_string(user_id)
+    ]
+
     result = run_lua(state.script_sha1, keys, argv)
     {:reply, result, state}
   end

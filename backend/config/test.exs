@@ -5,15 +5,19 @@ import Config
 config :dunda, :containment_mode, false
 config :dunda, :environment, "test"
 config :dunda, :otp_secret, "test-only-otp-secret"
-config :dunda, :webhook_secrets, daraja: "test-daraja-webhook-secret", pesapal: "test-pesapal-webhook-secret"
+
+config :dunda, :webhook_secrets,
+  daraja: "test-daraja-webhook-secret",
+  pesapal: "test-pesapal-webhook-secret"
+
 config :dunda, :metrics_token, "test-metrics-token"
 config :dunda, :secure_cookies, false
 config :dunda, :phase4_gate_enforced, false
 config :dunda, :step_up_secret, "test-step-up-secret"
 config :dunda, :quote_signing_secret, "test-quote-secret"
 config :dunda, :checkout_provider, :pesapal
-config :dunda, :inventory_authority, :redis_legacy
-config :dunda, :redis_role, :transactional_legacy
+config :dunda, :inventory_authority, :postgres
+config :dunda, :redis_role, :projection
 config :dunda, :scanner_manifest_private_key, "nWGxne/9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2A="
 config :dunda, :scanner_manifest_public_key, "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
 config :dunda, :scanner_manifest_key_id, "manifest-test-v1"
@@ -50,6 +54,7 @@ config :dunda, Dunda.Hashed.HMAC,
 # Never hit the network in tests.
 config :dunda, :daraja, adapter: Dunda.Payments.Daraja.Sandbox
 config :dunda, :pesapal, adapter: Dunda.Billing.Pesapal.Sandbox
+config :dunda, :checkout_refund_provider, adapter: Dunda.Checkout.RefundProvider.Sandbox
 
 config :dunda, DundaWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}, port: 4002],

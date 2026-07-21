@@ -1,5 +1,5 @@
 defmodule DundaWeb.ContainmentController do
-  @moduledoc """Stable, non-sensitive responses for operations disabled by Phase 0."""
+  @moduledoc "Stable, non-sensitive responses for operations disabled by Phase 0."
 
   use DundaWeb, :controller
 

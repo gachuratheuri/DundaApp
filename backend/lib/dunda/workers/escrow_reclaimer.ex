@@ -14,24 +14,26 @@ defmodule Dunda.Workers.EscrowReclaimer do
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"ticket_tier_id" => pool_id}}) when not is_nil(pool_id) do
-    if Dunda.Containment.blocked?(:checkout), do: {:cancel, :phase_0_containment}, else: reclaim_for_pool(pool_id)
+    if Dunda.Containment.blocked?(:checkout),
+      do: {:cancel, :phase_0_containment},
+      else: reclaim_for_pool(pool_id)
   end
 
   def perform(%Oban.Job{args: _}) do
     if Dunda.Containment.blocked?(:checkout) do
       {:cancel, :phase_0_containment}
     else
-    tier_pools =
-      from(t in Dunda.Ticketing.TicketTier, select: t.id)
-      |> Dunda.Repo.all()
-      |> Enum.map(&Inventory.tier_pool/1)
+      tier_pools =
+        from(t in Dunda.Ticketing.TicketTier, select: t.id)
+        |> Dunda.Repo.all()
+        |> Enum.map(&Inventory.tier_pool/1)
 
-    event_pools =
-      from(e in Dunda.Events.Event, select: e.id)
-      |> Dunda.Repo.all()
-      |> Enum.map(&Inventory.event_pool/1)
+      event_pools =
+        from(e in Dunda.Events.Event, select: e.id)
+        |> Dunda.Repo.all()
+        |> Enum.map(&Inventory.event_pool/1)
 
-    Enum.each(tier_pools ++ event_pools, &reclaim_for_pool/1)
+      Enum.each(tier_pools ++ event_pools, &reclaim_for_pool/1)
 
       :ok
     end

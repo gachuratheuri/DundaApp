@@ -80,7 +80,9 @@ defmodule Dunda.Organisations.Organisation do
     ])
     |> validate_required([:name, :slug, :verification_status, :country])
     |> update_change(:slug, &normalise_slug/1)
-    |> validate_format(:slug, ~r/^[a-z0-9-]+$/, message: "lowercase letters, digits and hyphens only")
+    |> validate_format(:slug, ~r/^[a-z0-9-]+$/,
+      message: "lowercase letters, digits and hyphens only"
+    )
     |> put_payout_phone(attrs)
     |> validate_format(:mpesa_phone, ~r/^2547\d{8}$/,
       message: "must be a Safaricom MSISDN like 2547XXXXXXXX"
@@ -91,6 +93,7 @@ defmodule Dunda.Organisations.Organisation do
   end
 
   defp normalise_slug(nil), do: nil
+
   defp normalise_slug(slug) do
     slug
     |> String.trim()

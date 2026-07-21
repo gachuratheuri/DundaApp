@@ -10,6 +10,7 @@ defmodule Dunda.Recovery do
     Repo.all(from p in InventoryPool, select: {p.pool_key, p.capacity, p.reserved, p.sold})
     |> Enum.map(fn {pool_key, capacity, reserved, sold} ->
       expected = max(capacity - reserved - sold, 0)
+
       redis =
         case Redix.command(:redix, ["GET", Dunda.Inventory.inventory_key(pool_key)]) do
           {:ok, value} when is_binary(value) ->
@@ -21,6 +22,7 @@ defmodule Dunda.Recovery do
           _ ->
             nil
         end
+
       %{pool_key: pool_key, expected: expected, redis: redis, equal?: redis == expected}
     end)
   end

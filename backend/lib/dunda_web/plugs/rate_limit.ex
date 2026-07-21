@@ -74,6 +74,7 @@ defmodule DundaWeb.Plugs.RateLimit do
 
   defp handle_count(conn, _count, key, _limit) do
     Dunda.Observability.increment(:rate_limited)
+
     retry_after =
       case Redix.command(:redix, ["TTL", key]) do
         {:ok, ttl} when is_integer(ttl) and ttl > 0 -> ttl

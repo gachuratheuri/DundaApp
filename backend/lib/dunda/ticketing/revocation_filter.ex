@@ -1,11 +1,11 @@
 defmodule Dunda.Ticketing.RevocationFilter do
   @moduledoc """
   A Counting Bloom Filter for managing the ticket revocation list.
-  
+
   Standard Bloom Filters cannot support item deletion. Since users can receive
   refunds or transfer tickets, we need the ability to *un-revoke* or remove
   items from the offline sync payload without rebuilding the entire filter.
-  
+
   This uses Erlang's `:atomics` for extreme high-concurrency, lock-free 
   mutations across the BEAM.
   """
@@ -33,6 +33,7 @@ defmodule Dunda.Ticketing.RevocationFilter do
     for index <- hash_indices(filter, item) do
       :atomics.add(filter.ref, index, 1)
     end
+
     :ok
   end
 
@@ -42,11 +43,13 @@ defmodule Dunda.Ticketing.RevocationFilter do
     for index <- hash_indices(filter, item) do
       decrement_counter(filter.ref, index)
     end
+
     :ok
   end
 
   defp decrement_counter(ref, index) do
     current = :atomics.get(ref, index)
+
     if current > 0 do
       case :atomics.compare_exchange(ref, index, current, current - 1) do
         ^current -> :ok
@@ -68,7 +71,7 @@ defmodule Dunda.Ticketing.RevocationFilter do
   @doc """
   Serializes the counting bloom filter down to a highly compressed standard 
   bit-array (Binary).
-  
+
   The gate scanners (e.g., GateScannerActivity.kt) only need to perform `member?`
   checks offline; they do not remove items. Thus, we can compress the 64-bit 
   counters down to 1-bit booleans (count > 0 -> 1, count == 0 -> 0), minimizing 

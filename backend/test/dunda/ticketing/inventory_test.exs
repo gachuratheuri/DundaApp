@@ -84,20 +84,24 @@ defmodule Dunda.Ticketing.InventoryTest do
 
   test "re-seeding pool queries database and does not swallow errors silently" do
     # Create a test event and a ticket tier using our Repo helpers
-    event = %Dunda.Events.Event{
-      name: "Event Test",
-      venue: "Venue Test",
-      starts_at: DateTime.utc_now(),
-      price_cents: 1000,
-      capacity: 100
-    } |> Dunda.Repo.insert!()
+    event =
+      %Dunda.Events.Event{
+        name: "Event Test",
+        venue: "Venue Test",
+        starts_at: DateTime.utc_now(),
+        price_cents: 1000,
+        capacity: 100
+      }
+      |> Dunda.Repo.insert!()
 
-    tier = %Dunda.Ticketing.TicketTier{
-      event_id: event.id,
-      name: "VIP Test",
-      price_cents: 5000,
-      capacity: 50
-    } |> Dunda.Repo.insert!()
+    tier =
+      %Dunda.Ticketing.TicketTier{
+        event_id: event.id,
+        name: "VIP Test",
+        price_cents: 5000,
+        capacity: 50
+      }
+      |> Dunda.Repo.insert!()
 
     pool_id = "tier:#{tier.id}"
 

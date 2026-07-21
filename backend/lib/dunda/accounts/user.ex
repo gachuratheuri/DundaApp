@@ -4,7 +4,7 @@ defmodule Dunda.Accounts.User do
 
     * **phone** — the original M-Pesa flow; `phone_msisdn` is encrypted at rest
       and `phone_msisdn_hash` is a deterministic HMAC blind index.
-    * **email** — independent users with an email + bcrypt-hashed password.
+    * **email** — independent users with a versioned PBKDF2 password hash.
     * **oauth** — Google/Apple/etc; identified by `(auth_provider, provider_uid)`.
 
   Independent (email/OAuth) users may have no phone, so `phone_msisdn` is now
@@ -51,7 +51,7 @@ defmodule Dunda.Accounts.User do
     |> unique_constraint(:phone_msisdn_hash)
   end
 
-  @doc "Email + password registration changeset (bcrypt-hashed)."
+  @doc "Email + password registration changeset (PBKDF2-HMAC-SHA-256)."
   @spec registration_changeset(t(), map()) :: Ecto.Changeset.t()
   def registration_changeset(user, attrs) do
     user
@@ -91,23 +91,31 @@ defmodule Dunda.Accounts.User do
   def privacy_changeset(user, attrs) do
     user
     |> cast(attrs, [
-      :email, :name, :avatar_url, :auth_provider, :provider_uid, :hashed_password,
-      :phone_msisdn, :phone_msisdn_hash, :device_fingerprint, :confirmed_at
+      :email,
+      :name,
+      :avatar_url,
+      :auth_provider,
+      :provider_uid,
+      :hashed_password,
+      :phone_msisdn,
+      :phone_msisdn_hash,
+      :device_fingerprint,
+      :confirmed_at
     ])
     |> validate_required([:email, :auth_provider])
     |> validate_inclusion(:auth_provider, @oauth_providers)
     |> unique_constraint(:email)
   end
 
-  @doc "Verify a plaintext password against the stored bcrypt hash (timing-safe)."
+  @doc "Verify a plaintext password against the stored versioned hash (timing-safe)."
   @spec valid_password?(t(), String.t()) :: boolean()
   def valid_password?(%__MODULE__{hashed_password: hash}, password)
       when is_binary(hash) and byte_size(password) > 0 do
-    Bcrypt.verify_pass(password, hash)
+    Dunda.Security.Password.verify(password, hash)
   end
 
-  def valid_password?(_user, _password) do
-    Bcrypt.no_user_verify()
+  def valid_password?(_user, password) do
+    Dunda.Security.Password.no_user_verify(password)
     false
   end
 
@@ -142,7 +150,7 @@ defmodule Dunda.Accounts.User do
     case changeset do
       %{valid?: true, changes: %{password: password}} ->
         changeset
-        |> put_change(:hashed_password, Bcrypt.hash_pwd_salt(password))
+        |> put_change(:hashed_password, Dunda.Security.Password.hash(password))
         |> delete_change(:password)
 
       _ ->

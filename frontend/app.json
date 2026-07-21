@@ -1,0 +1,44 @@
+{
+  "expo": {
+    "name": "Dunda",
+    "slug": "dunda-app",
+    "owner": "gachuratheuri",
+    "version": "2.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "userInterfaceStyle": "dark",
+    "scheme": "dunda",
+    "splash": {
+      "image": "./assets/images/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#08080F"
+    },
+    "android": {
+      "package": "ke.dunda.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundColor": "#08080F"
+      },
+      "softwareKeyboardLayoutMode": "pan"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "ke.dunda.app",
+      "infoPlist": {
+        "UIViewControllerBasedStatusBarAppearance": false
+      }
+    },
+    "plugins": [
+      "expo-router",
+      "expo-asset"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "7a3e797c-e445-4ca4-9b14-befcb7d9204e"
+      }
+    }
+  }
+}

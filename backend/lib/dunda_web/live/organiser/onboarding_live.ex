@@ -40,18 +40,26 @@ defmodule DundaWeb.Organiser.OnboardingLive do
     # Map the form_data to the expected schema attributes
     attrs = %{
       name: data["org_name"],
-      slug: data["org_name"] |> String.downcase() |> String.replace(~r/[^a-z0-9]+/, "-") |> String.trim("-"),
-      mpesa_phone: data["phone"], # using phone as mpesa_phone
+      slug:
+        data["org_name"]
+        |> String.downcase()
+        |> String.replace(~r/[^a-z0-9]+/, "-")
+        |> String.trim("-"),
+      # using phone as mpesa_phone
+      mpesa_phone: data["phone"],
       scraper_enabled: false
     }
 
-    case Dunda.Organisations.create_organisation_for_user(socket.assigns.current_organiser.id, attrs) do
+    case Dunda.Organisations.create_organisation_for_user(
+           socket.assigns.current_organiser.id,
+           attrs
+         ) do
       {:ok, _org} ->
         {:noreply,
          socket
          |> put_flash(:info, "Organisation registered successfully! Welcome to Dunda.")
          |> push_navigate(to: ~p"/portal")}
-      
+
       {:error, _changeset} ->
         {:noreply,
          socket

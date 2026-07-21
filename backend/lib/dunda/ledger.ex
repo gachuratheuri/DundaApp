@@ -48,7 +48,8 @@ defmodule Dunda.Ledger do
               nil -> {:error, :settlement_not_recorded}
             end
 
-          other -> other
+          other ->
+            other
         end
     end
   end
@@ -81,5 +82,4 @@ defmodule Dunda.Ledger do
         where: e.transaction_id == ^to_string(transaction_id) and e.status == "settled"
     )
   end
-
 end

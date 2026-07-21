@@ -22,17 +22,25 @@ defmodule Mix.Tasks.Dunda.DsrTransition do
   @impl Mix.Task
   def run(args) do
     Mix.Task.run("app.start")
-    {opts, _, _} = OptionParser.parse(args, switches: [id: :string, status: :string, note: :string])
+
+    {opts, _, _} =
+      OptionParser.parse(args, switches: [id: :string, status: :string, note: :string])
 
     with id when is_binary(id) <- opts[:id] || Mix.raise("--id is required"),
          status when is_binary(status) <- opts[:status] || Mix.raise("--status is required"),
-         %DataSubjectRequest{} = request <- Repo.get(DataSubjectRequest, id) || Mix.raise("request not found: #{id}") do
+         %DataSubjectRequest{} = request <-
+           Repo.get(DataSubjectRequest, id) || Mix.raise("request not found: #{id}") do
       attrs = if opts[:note], do: %{notes: opts[:note]}, else: %{}
 
       case Privacy.transition_status(request, status, attrs) do
-        {:ok, updated} -> Mix.shell().info("#{updated.id}: #{request.status} -> #{updated.status}")
-        {:error, :invalid_transition} -> Mix.raise("invalid transition: #{request.status} -> #{status}")
-        {:error, changeset} -> Mix.raise("transition rejected: #{inspect(changeset.errors)}")
+        {:ok, updated} ->
+          Mix.shell().info("#{updated.id}: #{request.status} -> #{updated.status}")
+
+        {:error, :invalid_transition} ->
+          Mix.raise("invalid transition: #{request.status} -> #{status}")
+
+        {:error, changeset} ->
+          Mix.raise("transition rejected: #{inspect(changeset.errors)}")
       end
     end
   end

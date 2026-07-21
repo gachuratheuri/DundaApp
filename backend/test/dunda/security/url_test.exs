@@ -1,6 +1,20 @@
 defmodule Dunda.Security.URLTest do
   use ExUnit.Case, async: false
 
+  setup do
+    previous_hosts = Application.get_env(:dunda, :scraper_allowed_hosts)
+    previous_requirement = Application.get_env(:dunda, :scraper_require_allowlist)
+    Application.put_env(:dunda, :scraper_allowed_hosts, [])
+    Application.put_env(:dunda, :scraper_require_allowlist, false)
+
+    on_exit(fn ->
+      Application.put_env(:dunda, :scraper_allowed_hosts, previous_hosts)
+      Application.put_env(:dunda, :scraper_require_allowlist, previous_requirement)
+    end)
+
+    :ok
+  end
+
   test "accepts only HTTPS URLs and rejects obvious SSRF targets" do
     assert Dunda.Security.URL.safe_https_url?("https://example.com/events")
     refute Dunda.Security.URL.safe_https_url?("http://example.com/events")
@@ -13,9 +27,7 @@ defmodule Dunda.Security.URLTest do
   end
 
   test "host allow-list supports exact hosts and subdomains only" do
-    previous = Application.get_env(:dunda, :scraper_allowed_hosts)
     Application.put_env(:dunda, :scraper_allowed_hosts, ["example.com"])
-    on_exit(fn -> Application.put_env(:dunda, :scraper_allowed_hosts, previous) end)
 
     assert Dunda.Security.URL.safe_https_url?("https://example.com/events")
     assert Dunda.Security.URL.safe_https_url?("https://www.example.com/events")

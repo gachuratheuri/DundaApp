@@ -1,5 +1,5 @@
 defmodule Dunda.Security.Webhook do
-  @moduledoc """Fail-closed shared-secret verification for provider callbacks."""
+  @moduledoc "Fail-closed shared-secret verification for provider callbacks."
 
   import Plug.Conn, only: [get_req_header: 2]
 

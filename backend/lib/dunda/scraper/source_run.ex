@@ -24,7 +24,23 @@ defmodule Dunda.Scraper.SourceRun do
 
   def changeset(run, attrs) do
     run
-    |> cast(attrs, [:organisation_id, :source, :target, :status, :started_at, :finished_at, :fetched_count, :parsed_count, :inserted_count, :updated_count, :rejected_count, :schema_drift, :response_hash, :error_code, :metadata])
+    |> cast(attrs, [
+      :organisation_id,
+      :source,
+      :target,
+      :status,
+      :started_at,
+      :finished_at,
+      :fetched_count,
+      :parsed_count,
+      :inserted_count,
+      :updated_count,
+      :rejected_count,
+      :schema_drift,
+      :response_hash,
+      :error_code,
+      :metadata
+    ])
     |> validate_required([:source, :status, :started_at, :metadata])
     |> validate_inclusion(:status, ~w(started succeeded failed schema_drift cancelled))
     |> validate_number(:fetched_count, greater_than_or_equal_to: 0)

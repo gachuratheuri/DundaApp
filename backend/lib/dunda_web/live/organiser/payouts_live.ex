@@ -10,6 +10,7 @@ defmodule DundaWeb.Organiser.PayoutsLive do
 
   defp format_currency(cents) do
     shillings = div(cents, 100)
+
     formatted =
       shillings
       |> Integer.to_charlist()
@@ -17,7 +18,7 @@ defmodule DundaWeb.Organiser.PayoutsLive do
       |> Enum.chunk_every(3)
       |> Enum.join(",")
       |> String.reverse()
-    
+
     "KSh " <> formatted
   end
 

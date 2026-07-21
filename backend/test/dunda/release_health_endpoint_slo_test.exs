@@ -13,6 +13,17 @@ defmodule Dunda.ReleaseHealthEndpointSloTest do
   alias Dunda.Observability
   alias Dunda.ReleaseHealth
 
+  defp complete_slo_evidence(extra \\ %{}) do
+    Map.merge(
+      %{
+        {:latency_bucket, "/api/checkout", 100} => 100,
+        {:operation_latency_bucket, "inventory_reservation", 50} => 100,
+        {:gauge, :webhook_ack_ms_last} => 100
+      },
+      extra
+    )
+  end
+
   test "latency_percentile/3 approximates p95/p99 from the bucketed histogram" do
     counters = %{
       {:latency_bucket, "/api/checkout", 100} => 95,
@@ -29,14 +40,15 @@ defmodule Dunda.ReleaseHealthEndpointSloTest do
   end
 
   test "checkout p95 breach marks the report unhealthy even when global averages are fine" do
-    counters = %{
-      {:requests_total, "/api/checkout", 200} => 100,
-      {:request_duration_us_total, "/api/checkout"} => 100_000,
-      {:request_duration_count, "/api/checkout"} => 100,
-      # 95 fast requests, 5 requests over the 300ms p95 SLO.
-      {:latency_bucket, "/api/checkout", 100} => 95,
-      {:latency_bucket, "/api/checkout", 500} => 5
-    }
+    counters =
+      complete_slo_evidence(%{
+        {:requests_total, "/api/checkout", 200} => 100,
+        {:request_duration_us_total, "/api/checkout"} => 100_000,
+        {:request_duration_count, "/api/checkout"} => 100,
+        # Fewer than 95% of requests are within the 300ms p95 SLO.
+        {:latency_bucket, "/api/checkout", 100} => 94,
+        {:latency_bucket, "/api/checkout", 500} => 6
+      })
 
     report = ReleaseHealth.evaluate(counters)
 
@@ -45,9 +57,7 @@ defmodule Dunda.ReleaseHealthEndpointSloTest do
   end
 
   test "checkout p95 within bounds keeps the report healthy" do
-    counters = %{
-      {:latency_bucket, "/api/checkout", 100} => 100
-    }
+    counters = complete_slo_evidence()
 
     report = ReleaseHealth.evaluate(counters)
     assert report.endpoint_slo.checkout_p95_ok
@@ -56,7 +66,7 @@ defmodule Dunda.ReleaseHealthEndpointSloTest do
   end
 
   test "a webhook_ack_ms_last gauge over the 2s threshold breaches its SLO" do
-    counters = %{{:gauge, :webhook_ack_ms_last} => 2_500}
+    counters = complete_slo_evidence(%{{:gauge, :webhook_ack_ms_last} => 2_500})
     report = ReleaseHealth.evaluate(counters)
 
     refute report.endpoint_slo.webhook_ack_ok
@@ -64,6 +74,7 @@ defmodule Dunda.ReleaseHealthEndpointSloTest do
   end
 
   test "Observability.observe_request/3 populates the latency histogram" do
+    unless Process.whereis(Observability), do: start_supervised!(Observability)
     Observability.observe_request("/api/checkout-histogram-test", 200, 50_000)
     counters = Observability.counters()
     assert Map.get(counters, {:latency_bucket, "/api/checkout-histogram-test", 50}) == 1

@@ -17,7 +17,9 @@ defmodule Mix.Tasks.Dunda.RotateKeys do
   @impl Mix.Task
   def run(args) do
     Mix.Task.run("app.start")
-    {opts, _, _} = OptionParser.parse(args, switches: [reencrypt: :boolean, blind_index: :boolean])
+
+    {opts, _, _} =
+      OptionParser.parse(args, switches: [reencrypt: :boolean, blind_index: :boolean])
 
     if not (opts[:reencrypt] || opts[:blind_index]) do
       Mix.raise("choose --reencrypt and/or --blind-index")
@@ -43,7 +45,13 @@ defmodule Mix.Tasks.Dunda.RotateKeys do
     if opts[:blind_index] do
       %{migrated: migrated, failed: failed} = outcome = Dunda.Vault.Rotation.rehash_blind_index()
       Mix.shell().info("blind_index: migrated=#{migrated} failed=#{failed}")
-      _ = Dunda.Audit.record(%{action: "vault.rehash_blind_index", resource_type: "vault_rotation", metadata: outcome})
+
+      _ =
+        Dunda.Audit.record(%{
+          action: "vault.rehash_blind_index",
+          resource_type: "vault_rotation",
+          metadata: outcome
+        })
     end
   end
 end

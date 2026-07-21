@@ -66,7 +66,11 @@ defmodule DundaWeb.Organiser.LoginLive do
         end
 
       _ ->
-        {:noreply, assign(socket, error: "Invalid email or password", form: to_form(%{"email" => email, "password" => ""}, as: "user"))}
+        {:noreply,
+         assign(socket,
+           error: "Invalid email or password",
+           form: to_form(%{"email" => email, "password" => ""}, as: "user")
+         )}
     end
   end
 end

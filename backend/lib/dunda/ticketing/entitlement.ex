@@ -33,7 +33,7 @@ defmodule Dunda.Ticketing.Entitlement do
     signing_input =
       url_encode(json_encode(header)) <> "." <> url_encode(json_encode(payload))
 
-    {pub_key, priv_key} = ec_keys()
+    {_pub_key, priv_key} = ec_keys()
     der_sig = :crypto.sign(:ecdsa, :sha256, signing_input, [priv_key, :prime256v1])
     signature = der_to_raw(der_sig) |> url_encode()
 
@@ -65,10 +65,11 @@ defmodule Dunda.Ticketing.Entitlement do
   end
 
   @doc "Verifies that an entitlement is protocol v2 and contains a complete binding."
-  def verify_device_bound(jwt) do
+  def verify_device_bound(jwt) when is_binary(jwt) do
     with {:ok, claims} <- verify(jwt),
          2 <- claims["protocol_version"],
-         {:ok, public_key} <- Dunda.Ticketing.CredentialProtocol.decode(claims["credential_public_key"]),
+         {:ok, public_key} <-
+           Dunda.Ticketing.CredentialProtocol.decode(claims["credential_public_key"]),
          true <- Dunda.Ticketing.CredentialProtocol.valid_public_key?(public_key),
          true <- is_integer(claims["nbf"]) and claims["nbf"] <= System.system_time(:second) do
       {:ok, Map.put(claims, "credential_public_key_raw", public_key)}
@@ -76,6 +77,7 @@ defmodule Dunda.Ticketing.Entitlement do
       _ -> {:error, :not_a_v2_credential}
     end
   end
+
   def verify_device_bound(_), do: {:error, :not_a_v2_credential}
 
   @doc "Verify a token's signature and expiry, returning the decoded claims."
@@ -120,6 +122,7 @@ defmodule Dunda.Ticketing.Entitlement do
     case verify(jwt) do
       {:ok, claims} ->
         encrypted_secret = claims["totp_secret"]
+
         with {:ok, decoded_enc} <- safe_url_decode(encrypted_secret),
              {:ok, secret} <- decrypt_secret(decoded_enc) do
           if verify_totp_window(secret, totp, now, drift) do
@@ -164,13 +167,14 @@ defmodule Dunda.Ticketing.Entitlement do
     offset = last &&& 0x0F
 
     # Extract 4 bytes starting at offset
-    <<_::binary-size(offset), byte1::integer-size(8), byte2::integer-size(8), byte3::integer-size(8), byte4::integer-size(8), _::binary>> = hmac
+    <<_::binary-size(offset), byte1::integer-size(8), byte2::integer-size(8),
+      byte3::integer-size(8), byte4::integer-size(8), _::binary>> = hmac
 
     binary =
-      ((byte1 &&& 0x7F) <<< 24)
-      ||| (byte2 <<< 16)
-      ||| (byte3 <<< 8)
-      ||| byte4
+      (byte1 &&& 0x7F) <<< 24 |||
+        byte2 <<< 16 |||
+        byte3 <<< 8 |||
+        byte4
 
     code = rem(binary, 1_000_000)
     to_string(code) |> String.pad_leading(6, "0")
@@ -186,6 +190,7 @@ defmodule Dunda.Ticketing.Entitlement do
 
   defp raw_private_key do
     key = signing_key()
+
     case Base.decode64(key) do
       {:ok, decoded} when byte_size(decoded) == 32 -> decoded
       _ -> :crypto.hash(:sha256, key)
@@ -207,6 +212,7 @@ defmodule Dunda.Ticketing.Entitlement do
     s = :binary.decode_unsigned(s_bin)
     :public_key.der_encode(:ECDSA_Sig_Value, {:ECDSA_Sig_Value, r, s})
   end
+
   defp raw_to_der(_), do: <<>>
 
   defp pad_32(bin) do

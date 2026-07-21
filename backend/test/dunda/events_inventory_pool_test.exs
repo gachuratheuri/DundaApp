@@ -146,7 +146,8 @@ defmodule Dunda.EventsInventoryPoolTest do
           phone: "254712345678"
         })
 
-      assert {:error, :capacity_below_committed_inventory} = Events.update_event(event, %{capacity: 2})
+      assert {:error, :capacity_below_committed_inventory} =
+               Events.update_event(event, %{capacity: 2})
 
       # Rejected update must not have partially applied — event row unchanged.
       # Reads via Repo (primary), not Events.get_event/1 (ReadRepo) — the

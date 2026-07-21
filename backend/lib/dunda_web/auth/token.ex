@@ -7,7 +7,8 @@ defmodule DundaWeb.Auth.Token do
   alias DundaWeb.Endpoint
 
   @salt "dunda_auth_token_salt"
-  @max_age 30 * 86_400 # 30 days
+  # 30 days
+  @max_age 30 * 86_400
 
   @doc """
   Signs a token for the given user.

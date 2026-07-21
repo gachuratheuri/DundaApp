@@ -19,34 +19,55 @@ config :dunda, :webhook_secrets, daraja: nil, pesapal: nil
 config :dunda, :metrics_token, nil
 config :dunda, :secure_cookies, true
 config :dunda, :phase4_gate_enforced, true
+
 config :dunda, :phase5_slo,
   error_rate_max: 0.01,
   average_latency_us_max: 500_000
+
 config :dunda, :step_up_secret, "dev-only-step-up-secret"
 config :dunda, :quote_signing_secret, "dev-only-quote-secret"
 config :dunda, :checkout_provider, :pesapal
 config :dunda, :max_replica_lag_seconds, 30
 config :dunda, :scraper_require_allowlist, true
-config :dunda, :scraper_allowed_hosts, ["ticketsasa.com", "hustlesasa.com", "mookh.com", "kenyabuzz.com"]
-config :dunda, :scanner_manifest_private_key, "nWGxne/9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2A="
-config :dunda, :scanner_manifest_public_key, "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
+
+config :dunda, :scraper_allowed_hosts, [
+  "ticketsasa.com",
+  "hustlesasa.com",
+  "mookh.com",
+  "kenyabuzz.com"
+]
+
+config :dunda, :scanner_manifest_private_key, nil
+config :dunda, :scanner_manifest_public_key, nil
 config :dunda, :scanner_manifest_key_id, "manifest-v1"
+
+config :logger, :console,
+  metadata: [
+    :request_id,
+    :tenant_id,
+    :payment_intent_id,
+    :organiser_user_id,
+    :checkout_request_id,
+    :order_tracking_id,
+    :merchant_reference
+  ]
 
 config :dunda, Oban,
   repo: Dunda.Repo,
   plugins: [
     # Workers fail closed under Phase 0; these schedules provide the durable
     # reconciliation cadence required once the release gate is approved.
-    {Oban.Plugins.Cron, crontab: [
-      {"*/1 * * * *", Dunda.Workers.OutboxDispatcherWorker},
-      {"*/1 * * * *", Dunda.Workers.ReservationExpiryWorker},
-      {"*/5 * * * *", Dunda.Workers.InventoryReconciliationWorker},
-      {"*/5 * * * *", Dunda.Workers.PaymentReconciliationWorker},
-      {"0 * * * *", Dunda.Workers.FinancialReconciliationWorker},
-      # DSR deadlines run regardless of Phase 0 containment — see the
-      # worker moduledoc. Hourly is well inside the 5-day due-soon window.
-      {"0 * * * *", Dunda.Workers.DsrDeadlineWorker}
-    ]}
+    {Oban.Plugins.Cron,
+     crontab: [
+       {"*/1 * * * *", Dunda.Workers.OutboxDispatcherWorker},
+       {"*/1 * * * *", Dunda.Workers.ReservationExpiryWorker},
+       {"*/5 * * * *", Dunda.Workers.InventoryReconciliationWorker},
+       {"*/5 * * * *", Dunda.Workers.PaymentReconciliationWorker},
+       {"0 * * * *", Dunda.Workers.FinancialReconciliationWorker},
+       # DSR deadlines run regardless of Phase 0 containment — see the
+       # worker moduledoc. Hourly is well inside the 5-day due-soon window.
+       {"0 * * * *", Dunda.Workers.DsrDeadlineWorker}
+     ]}
   ],
   queues: [
     escrow_cleanup: 10,
@@ -97,7 +118,8 @@ config :esbuild,
 config :tailwind,
   version: "3.4.6",
   dunda: [
-    args: ~w(--config=tailwind.config.js --input=css/app.css --output=../priv/static/assets/app.css),
+    args:
+      ~w(--config=tailwind.config.js --input=css/app.css --output=../priv/static/assets/app.css),
     cd: Path.expand("../assets", __DIR__)
   ]
 

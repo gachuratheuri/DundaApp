@@ -24,6 +24,7 @@ defmodule Dunda.Workers.HtmlFetchWorker do
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"opts" => opts} = args}) do
     org_id = args["organisation_id"]
+
     if Dunda.Containment.blocked?(:dynamic_scraping) do
       {:cancel, :phase_0_containment}
     else
@@ -42,7 +43,10 @@ defmodule Dunda.Workers.HtmlFetchWorker do
           {:cancel, :no_url}
 
         {:error, reason} ->
-          Logger.warning("HtmlFetchWorker #{url} failed: #{inspect(reason)}")
+          Logger.warning(
+            "HtmlFetchWorker #{Dunda.Security.URL.log_safe(url)} failed: #{inspect(Dunda.Logging.Redactor.redact(reason))}"
+          )
+
           {:error, reason}
       end
     end

@@ -31,7 +31,11 @@ defmodule DundaWeb.TicketJSON do
       credential_valid_from: ticket.credential_valid_from,
       credential_valid_until: ticket.credential_valid_until,
       credential_epoch: ticket.credential_epoch,
-      credential_status: if(ticket.credential_version == 2 and ticket.status in ["valid", "scanned"], do: "device_bound", else: "legacy_or_revoked"),
+      credential_status:
+        if(ticket.credential_version == 2 and ticket.status in ["valid", "scanned"],
+          do: "device_bound",
+          else: "legacy_or_revoked"
+        ),
       is_scanned: ticket.status == "scanned",
       status: status,
       resale_status: "none"

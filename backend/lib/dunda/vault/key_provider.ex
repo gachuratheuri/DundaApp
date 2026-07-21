@@ -26,8 +26,11 @@ defmodule Dunda.Vault.KeyProvider do
   @spec fetch_key!(module(), key_name()) :: binary()
   def fetch_key!(provider, name) do
     case provider.fetch_key(name) do
-      {:ok, key} when is_binary(key) and byte_size(key) > 0 -> key
-      {:error, reason} -> raise "#{inspect(provider)} could not resolve required key #{name}: #{inspect(reason)}"
+      {:ok, key} when is_binary(key) and byte_size(key) > 0 ->
+        key
+
+      {:error, reason} ->
+        raise "#{inspect(provider)} could not resolve required key #{name}: #{inspect(reason)}"
     end
   end
 

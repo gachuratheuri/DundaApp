@@ -24,9 +24,19 @@ defmodule Dunda.Workers.IngestWorker do
   }
 
   @doc "Enqueue an ingest job from a fetch worker."
-  @spec enqueue([map()], String.t(), pos_integer() | nil) :: {:ok, Oban.Job.t()} | {:error, term()}
+  @spec enqueue([map()], String.t(), pos_integer() | nil) ::
+          {:ok, Oban.Job.t()} | {:error, term()}
   def enqueue([], source, org_id) do
-    _ = Runs.record(%{organisation_id: org_id, source: source, status: "succeeded", fetched_count: 0, parsed_count: 0, metadata: %{pipeline: "ingest", empty_result: true}})
+    _ =
+      Runs.record(%{
+        organisation_id: org_id,
+        source: source,
+        status: "succeeded",
+        fetched_count: 0,
+        parsed_count: 0,
+        metadata: %{pipeline: "ingest", empty_result: true}
+      })
+
     {:ok, :nothing_to_ingest}
   end
 
@@ -43,24 +53,26 @@ defmodule Dunda.Workers.IngestWorker do
     if Dunda.Containment.blocked?(:dynamic_scraping) do
       {:cancel, :phase_0_containment}
     else
-    case Map.fetch(@sources, source) do
-      {:ok, source_atom} ->
-        normalized = Normaliser.normalise(raw, source_atom, organisation_id: org_id)
-        result = normalized |> Enum.map(&Scraper.upsert_event/1) |> tally()
-        drift = raw != [] and normalized == []
-        if drift do
-          Dunda.Observability.increment({:scraper_schema_drift, source})
-          Logger.warning("IngestWorker[#{source}] schema drift: all rows rejected")
-        end
-        _ = record_run(source, org_id, raw, normalized, result, drift)
+      case Map.fetch(@sources, source) do
+        {:ok, source_atom} ->
+          normalized = Normaliser.normalise(raw, source_atom, organisation_id: org_id)
+          result = normalized |> Enum.map(&Scraper.upsert_event/1) |> tally()
+          drift = raw != [] and normalized == []
 
-        Logger.info("IngestWorker[#{source}] org=#{inspect(org_id)} #{inspect(result)}")
-        :ok
+          if drift do
+            Dunda.Observability.increment({:scraper_schema_drift, source})
+            Logger.warning("IngestWorker[#{source}] schema drift: all rows rejected")
+          end
 
-      :error ->
-        Logger.error("IngestWorker: unknown source #{inspect(source)} — discarding job")
-        {:cancel, :unknown_source}
-    end
+          _ = record_run(source, org_id, raw, normalized, result, drift)
+
+          Logger.info("IngestWorker[#{source}] org=#{inspect(org_id)} #{inspect(result)}")
+          :ok
+
+        :error ->
+          Logger.error("IngestWorker: unknown source #{inspect(source)} — discarding job")
+          {:cancel, :unknown_source}
+      end
     end
   end
 
@@ -74,7 +86,20 @@ defmodule Dunda.Workers.IngestWorker do
   end
 
   defp record_run(source, org_id, raw, normalized, result, drift) do
-    attrs = %{organisation_id: org_id, source: source, status: if(drift, do: "schema_drift", else: "succeeded"), finished_at: DateTime.utc_now() |> DateTime.truncate(:second), fetched_count: length(raw), parsed_count: length(normalized), inserted_count: result.inserted, updated_count: result.updated, rejected_count: result.error, schema_drift: drift, metadata: %{pipeline: "ingest"}}
+    attrs = %{
+      organisation_id: org_id,
+      source: source,
+      status: if(drift, do: "schema_drift", else: "succeeded"),
+      finished_at: DateTime.utc_now() |> DateTime.truncate(:second),
+      fetched_count: length(raw),
+      parsed_count: length(normalized),
+      inserted_count: result.inserted,
+      updated_count: result.updated,
+      rejected_count: result.error,
+      schema_drift: drift,
+      metadata: %{pipeline: "ingest"}
+    }
+
     case Runs.start(Map.put(attrs, :started_at, DateTime.utc_now() |> DateTime.truncate(:second))) do
       {:ok, run} -> Runs.finish(run, attrs)
       _ -> :ok

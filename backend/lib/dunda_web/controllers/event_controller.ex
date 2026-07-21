@@ -4,8 +4,18 @@ defmodule DundaWeb.EventController do
   alias Dunda.Events
 
   def index(conn, params) do
-    page = Events.list_public_events(limit: parse_limit(params["limit"]), after: params["after"], category: params["category"], city: params["city"])
-    render(conn, :index, events: page.events, meta: %{next_cursor: page.next_cursor, limit: parse_limit(params["limit"])})
+    page =
+      Events.list_public_events(
+        limit: parse_limit(params["limit"]),
+        after: params["after"],
+        category: params["category"],
+        city: params["city"]
+      )
+
+    render(conn, :index,
+      events: page.events,
+      meta: %{next_cursor: page.next_cursor, limit: parse_limit(params["limit"])}
+    )
   end
 
   def show(conn, %{"id" => id}) do
@@ -21,5 +31,6 @@ defmodule DundaWeb.EventController do
       _ -> 20
     end
   end
+
   defp parse_limit(_), do: 20
 end

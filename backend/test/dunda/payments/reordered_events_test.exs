@@ -58,10 +58,22 @@ defmodule Dunda.Payments.ReorderedEventsTest do
 
     {:ok, quote} = Checkout.create_quote(user.id, %{event_id: event.id, quantity: 1})
     key = Base.encode16(:crypto.strong_rand_bytes(10))
-    {:ok, intent} = Checkout.create_payment_intent(user.id, %{quote_id: quote.id, idempotency_key: key, phone: "254712345678"})
+
+    {:ok, intent} =
+      Checkout.create_payment_intent(user.id, %{
+        quote_id: quote.id,
+        idempotency_key: key,
+        phone: "254712345678"
+      })
+
     {:ok, {:submit, intent, attempt}} = Checkout.prepare_provider_submission(intent.id)
     checkout_id = "reorder-checkout-#{unique()}"
-    {:ok, _} = Checkout.complete_provider_submission(intent.id, attempt.id, %{result: :ok, provider_checkout_id: checkout_id})
+
+    {:ok, _} =
+      Checkout.complete_provider_submission(intent.id, attempt.id, %{
+        result: :ok,
+        provider_checkout_id: checkout_id
+      })
 
     {:ok, confirmed} =
       Checkout.confirm_payment(intent.id, %{
@@ -89,7 +101,15 @@ defmodule Dunda.Payments.ReorderedEventsTest do
   end
 
   test "PaymentIntent.transition_allowed?/2 rejects failed from every post-confirmation state" do
-    for state <- ["confirmed", "fulfilled", "confirmed_late", "manual_review", "refund_pending", "refunded", "expired_pending_reconciliation"] do
+    for state <- [
+          "confirmed",
+          "fulfilled",
+          "confirmed_late",
+          "manual_review",
+          "refund_pending",
+          "refunded",
+          "expired_pending_reconciliation"
+        ] do
       refute PaymentIntent.transition_allowed?(state, "failed"),
              "expected #{state} -> failed to be disallowed"
     end
@@ -100,7 +120,13 @@ defmodule Dunda.Payments.ReorderedEventsTest do
     {event, _pool} = CheckoutFixtures.insert_event_with_pool!(capacity: 50)
     {:ok, quote} = Checkout.create_quote(user.id, %{event_id: event.id, quantity: 1})
     key = Base.encode16(:crypto.strong_rand_bytes(10))
-    {:ok, intent} = Checkout.create_payment_intent(user.id, %{quote_id: quote.id, idempotency_key: key, phone: "254712345678"})
+
+    {:ok, intent} =
+      Checkout.create_payment_intent(user.id, %{
+        quote_id: quote.id,
+        idempotency_key: key,
+        phone: "254712345678"
+      })
 
     assert {:ok, failed} = Checkout.fail_payment(intent.id, "provider_rejected")
     assert failed.state == "failed"

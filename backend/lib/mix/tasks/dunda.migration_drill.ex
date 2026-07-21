@@ -34,7 +34,10 @@ defmodule Mix.Tasks.Dunda.MigrationDrill do
         Mix.raise("no migrations found at #{migrations_path}")
 
       [_only] ->
-        Mix.shell().info("Only one migration exists; nothing to drill against a pre-existing dataset. Running it directly.")
+        Mix.shell().info(
+          "Only one migration exists; nothing to drill against a pre-existing dataset. Running it directly."
+        )
+
         run_final_migration(migrations_path, List.first(versions))
 
       _ ->
@@ -42,7 +45,12 @@ defmodule Mix.Tasks.Dunda.MigrationDrill do
         latest = List.last(versions)
 
         Mix.shell().info("Migrating to #{target} (HEAD~1)...")
-        {:ok, _, _} = Ecto.Migrator.with_repo(Dunda.Repo, &Ecto.Migrator.run(&1, migrations_path, :up, to: target))
+
+        {:ok, _, _} =
+          Ecto.Migrator.with_repo(
+            Dunda.Repo,
+            &Ecto.Migrator.run(&1, migrations_path, :up, to: target)
+          )
 
         Mix.shell().info("Seeding production-shaped dataset...")
         before_counts = Dunda.Retention.preview()
@@ -59,7 +67,10 @@ defmodule Mix.Tasks.Dunda.MigrationDrill do
   end
 
   defp run_final_migration(migrations_path, version) do
-    case Ecto.Migrator.with_repo(Dunda.Repo, &Ecto.Migrator.run(&1, migrations_path, :up, to: version)) do
+    case Ecto.Migrator.with_repo(
+           Dunda.Repo,
+           &Ecto.Migrator.run(&1, migrations_path, :up, to: version)
+         ) do
       {:ok, _migrated, _} -> :ok
       {:error, reason} -> Mix.raise("final migration failed: #{inspect(reason)}")
     end
@@ -72,7 +83,9 @@ defmodule Mix.Tasks.Dunda.MigrationDrill do
       end)
 
     if failures != [] do
-      Mix.raise("migration drill lost protected rows: #{inspect(failures)} (before=#{inspect(before_counts)} after=#{inspect(after_counts)})")
+      Mix.raise(
+        "migration drill lost protected rows: #{inspect(failures)} (before=#{inspect(before_counts)} after=#{inspect(after_counts)})"
+      )
     end
   end
 end

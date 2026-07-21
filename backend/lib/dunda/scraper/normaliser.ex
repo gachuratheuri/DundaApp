@@ -141,5 +141,6 @@ defmodule Dunda.Scraper.Normaliser do
     url = String.trim(url)
     if Dunda.Security.URL.safe_https_url?(url), do: url, else: nil
   end
+
   defp safe_source_url(_), do: nil
 end

@@ -1,5 +1,5 @@
 # ---- Build Stage ----
-FROM elixir:1.15-alpine AS builder
+FROM elixir:1.15.8-alpine AS builder
 
 # Set build environment
 ENV MIX_ENV=prod
@@ -24,13 +24,14 @@ RUN mix deps.compile
 COPY config config
 COPY lib lib
 COPY priv priv
+COPY assets assets
 
 # Compile and release
-RUN mix compile
+RUN mix compile --warnings-as-errors
 RUN mix release
 
 # ---- Release Stage ----
-FROM alpine:3.18
+FROM alpine:3.20.3
 
 RUN apk add --no-cache libstdc++ ncurses-libs openssl tzdata bash curl
 

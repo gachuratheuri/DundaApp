@@ -43,6 +43,7 @@ defmodule Dunda.Vault.KeyProviderEnvTest do
 
   test "KeyProvider.fetch_key!/2 raises when the required key is absent" do
     System.delete_env("ENCRYPTION_KEY")
+
     assert_raise RuntimeError, ~r/could not resolve required key/, fn ->
       KeyProvider.fetch_key!(Env, :encryption_key)
     end
@@ -56,6 +57,8 @@ defmodule Dunda.Vault.KeyProviderEnvTest do
   test "KeyProvider.fetch_key_optional/2 returns the decoded key when present" do
     System.put_env("ENCRYPTION_KEY_PREVIOUS", @valid_key)
     on_exit(fn -> System.delete_env("ENCRYPTION_KEY_PREVIOUS") end)
-    assert KeyProvider.fetch_key_optional(Env, :encryption_key_previous) == Base.decode64!(@valid_key)
+
+    assert KeyProvider.fetch_key_optional(Env, :encryption_key_previous) ==
+             Base.decode64!(@valid_key)
   end
 end

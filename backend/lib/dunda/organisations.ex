@@ -12,6 +12,19 @@ defmodule Dunda.Organisations do
   alias Dunda.Organisations.OrganisationMember
   alias Dunda.{ReadRepo, Repo}
 
+  @permission_roles %{
+    manage_organisation: ~w(owner),
+    manage_members: ~w(owner admin),
+    manage_payouts: ~w(owner),
+    manage_events: ~w(owner admin manager),
+    manage_inventory: ~w(owner admin manager),
+    configure_scraper: ~w(owner admin),
+    view_reports: ~w(owner admin manager member),
+    admission: ~w(owner admin scanner)
+  }
+
+  @portal_roles ~w(owner admin manager)
+
   @spec list_organisations() :: [Organisation.t()]
   def list_organisations do
     Organisation |> from(order_by: [asc: :name]) |> ReadRepo.all()
@@ -30,6 +43,30 @@ defmodule Dunda.Organisations do
     |> ReadRepo.all()
   end
 
+  @doc "Lists organisations for which the user holds one of the supplied active roles."
+  def list_organisations_for_user(user_id, roles) when is_list(roles) do
+    from(o in Organisation,
+      join: m in OrganisationMember,
+      on: m.organisation_id == o.id,
+      where: m.user_id == ^user_id and not is_nil(m.accepted_at) and m.role in ^roles,
+      order_by: [asc: o.name],
+      distinct: true
+    )
+    |> Repo.all()
+  end
+
+  @doc "Roles permitted to enter the current mutation-capable organiser portal."
+  def portal_roles, do: @portal_roles
+
+  @doc "Authorises a domain action against one explicit organisation tenant."
+  @spec authorised?(integer(), integer(), atom()) :: boolean()
+  def authorised?(user_id, organisation_id, permission) do
+    case Map.fetch(@permission_roles, permission) do
+      {:ok, roles} -> member?(user_id, organisation_id, roles)
+      :error -> false
+    end
+  end
+
   @doc "Returns whether a user has an accepted membership with the requested role."
   @spec member?(integer(), integer(), [String.t()]) :: boolean()
   def member?(user_id, organisation_id, roles \\ ~w(owner admin manager)) do
@@ -42,10 +79,14 @@ defmodule Dunda.Organisations do
   end
 
   @doc "Creates an organisation and its owner membership atomically."
-  @spec create_organisation_for_user(integer(), map()) :: {:ok, Organisation.t()} | {:error, term()}
+  @spec create_organisation_for_user(integer(), map()) ::
+          {:ok, Organisation.t()} | {:error, term()}
   def create_organisation_for_user(user_id, attrs) do
     Ecto.Multi.new()
-    |> Ecto.Multi.insert(:organisation, Organisation.changeset(%Organisation{}, Map.put(attrs, :owner_user_id, user_id)))
+    |> Ecto.Multi.insert(
+      :organisation,
+      Organisation.changeset(%Organisation{}, Map.put(attrs, :owner_user_id, user_id))
+    )
     |> Ecto.Multi.insert(:membership, fn %{organisation: org} ->
       OrganisationMember.changeset(%OrganisationMember{}, %{
         organisation_id: org.id,
@@ -90,19 +131,40 @@ defmodule Dunda.Organisations do
     step_up = Dunda.Security.StepUp.verify(step_up_token || "", "payout_destination")
 
     if payout_phone_change?(attrs) and match?({:error, _}, step_up) do
-      {:error, Ecto.Changeset.add_error(changeset, :mpesa_phone, "step-up authentication is required")}
+      {:error,
+       Ecto.Changeset.add_error(changeset, :mpesa_phone, "step-up authentication is required")}
     else
       case Repo.update(changeset) do
         {:ok, updated} = result ->
           if payout_phone_change?(attrs) do
             {:ok, actor_id} = step_up
-            _ = Dunda.Audit.record(%{actor_user_id: actor_id, action: "organisation.payout_destination_changed", resource_type: "organisation", resource_id: to_string(updated.id), metadata: %{step_up_verified: true}})
+
+            _ =
+              Dunda.Audit.record(%{
+                actor_user_id: actor_id,
+                action: "organisation.payout_destination_changed",
+                resource_type: "organisation",
+                resource_id: to_string(updated.id),
+                metadata: %{step_up_verified: true}
+              })
           end
 
           result
 
-        error -> error
+        error ->
+          error
       end
+    end
+  end
+
+  @doc "Tenant- and permission-scoped organisation update."
+  def update_organisation_for_user(user_id, %Organisation{} = org, attrs) do
+    permission = if payout_phone_change?(attrs), do: :manage_payouts, else: :configure_scraper
+
+    if authorised?(user_id, org.id, permission) do
+      update_organisation(org, attrs)
+    else
+      {:error, :forbidden}
     end
   end
 

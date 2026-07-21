@@ -27,7 +27,11 @@ defmodule DundaWeb.PrivacyControllerTest do
       user = insert_user!()
       {:ok, request} = Privacy.create_request(user.id, "rectification", user.email)
 
-      conn = conn |> authed_conn(user) |> patch("/api/privacy/requests/#{request.id}", %{"name" => "Rectified Name"})
+      conn =
+        conn
+        |> authed_conn(user)
+        |> patch("/api/privacy/requests/#{request.id}", %{"name" => "Rectified Name"})
+
       body = json_response(conn, 200)
 
       assert %{"data" => %{"status" => "completed"}} = body
@@ -39,7 +43,11 @@ defmodule DundaWeb.PrivacyControllerTest do
       user = insert_user!()
       {:ok, request} = Privacy.create_request(user.id, "objection", user.email)
 
-      conn = conn |> authed_conn(user) |> patch("/api/privacy/requests/#{request.id}", %{"scope" => "analytics"})
+      conn =
+        conn
+        |> authed_conn(user)
+        |> patch("/api/privacy/requests/#{request.id}", %{"scope" => "analytics"})
+
       body = json_response(conn, 200)
 
       assert %{"data" => %{"status" => "in_progress"}} = body
@@ -52,7 +60,10 @@ defmodule DundaWeb.PrivacyControllerTest do
       attacker = insert_user!()
       {:ok, request} = Privacy.create_request(owner.id, "rectification", owner.email)
 
-      conn = conn |> authed_conn(attacker) |> patch("/api/privacy/requests/#{request.id}", %{"name" => "Hijacked"})
+      conn =
+        conn
+        |> authed_conn(attacker)
+        |> patch("/api/privacy/requests/#{request.id}", %{"name" => "Hijacked"})
 
       assert json_response(conn, 404)
       assert Dunda.Repo.get!(User, owner.id).name != "Hijacked"

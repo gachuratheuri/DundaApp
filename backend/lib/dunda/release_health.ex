@@ -11,10 +11,6 @@ defmodule Dunda.ReleaseHealth do
   @default_average_latency_us 500_000
 
   # Root-plan literal numeric SLOs (Phase 12 § Proposed measurable SLOs).
-  # "Reservation" and "checkout creation" are the same HTTP call in this
-  # system (POST /api/checkout performs the reservation transaction inline —
-  # see Dunda.Checkout.create_payment_intent/2), so both named SLOs are
-  # evaluated against the same route's histogram.
   @checkout_route "/api/checkout"
   @checkout_p95_max_ms 300
   @reservation_p99_max_ms 150
@@ -44,7 +40,8 @@ defmodule Dunda.ReleaseHealth do
       healthy:
         error_rate <= thresholds.error_rate_max and
           (is_nil(average_latency_us) or average_latency_us <= thresholds.average_latency_us_max) and
-          endpoint_slo.checkout_p95_ok and endpoint_slo.reservation_p99_ok and endpoint_slo.webhook_ack_ok,
+          endpoint_slo.checkout_p95_ok and endpoint_slo.reservation_p99_ok and
+          endpoint_slo.webhook_ack_ok,
       requests: requests,
       errors_5xx: errors_5xx,
       error_rate: Float.round(error_rate, 6),
@@ -54,12 +51,23 @@ defmodule Dunda.ReleaseHealth do
     }
   rescue
     _ ->
-      %{healthy: false, requests: 0, errors_5xx: 0, error_rate: 1.0, average_latency_us: nil, thresholds: thresholds(), endpoint_slo: default_endpoint_slo()}
+      %{
+        healthy: false,
+        requests: 0,
+        errors_5xx: 0,
+        error_rate: 1.0,
+        average_latency_us: nil,
+        thresholds: thresholds(),
+        endpoint_slo: default_endpoint_slo()
+      }
   end
 
   defp endpoint_slo(counters) do
     checkout_p95 = Dunda.Observability.latency_percentile(counters, @checkout_route, 95)
-    reservation_p99 = Dunda.Observability.latency_percentile(counters, @checkout_route, 99)
+
+    reservation_p99 =
+      Dunda.Observability.operation_latency_percentile(counters, :inventory_reservation, 99)
+
     webhook_ack_ms = Map.get(counters, {:gauge, :webhook_ack_ms_last})
 
     %{
@@ -77,14 +85,20 @@ defmodule Dunda.ReleaseHealth do
 
   defp default_endpoint_slo do
     %{
-      checkout_p95_ms: nil, checkout_p95_max_ms: @checkout_p95_max_ms, checkout_p95_ok: true,
-      reservation_p99_ms: nil, reservation_p99_max_ms: @reservation_p99_max_ms, reservation_p99_ok: true,
-      webhook_ack_ms: nil, webhook_ack_max_ms: @webhook_ack_max_ms, webhook_ack_ok: true
+      checkout_p95_ms: nil,
+      checkout_p95_max_ms: @checkout_p95_max_ms,
+      checkout_p95_ok: false,
+      reservation_p99_ms: nil,
+      reservation_p99_max_ms: @reservation_p99_max_ms,
+      reservation_p99_ok: false,
+      webhook_ack_ms: nil,
+      webhook_ack_max_ms: @webhook_ack_max_ms,
+      webhook_ack_ok: false
     }
   end
 
-  # No samples yet is not a breach — an idle endpoint isn't an unhealthy one.
-  defp within_ms?(nil, _max), do: true
+  # A release gate cannot infer health from an absence of evidence.
+  defp within_ms?(nil, _max), do: false
   defp within_ms?(:infinity, _max), do: false
   defp within_ms?(value, max) when is_number(value), do: value <= max
 
@@ -97,12 +111,16 @@ defmodule Dunda.ReleaseHealth do
         Keyword.get(configured, :error_rate_max)
         |> bounded_error_rate(),
       average_latency_us_max:
-        numeric_or_default(Keyword.get(configured, :average_latency_us_max), @default_average_latency_us)
+        numeric_or_default(
+          Keyword.get(configured, :average_latency_us_max),
+          @default_average_latency_us
+        )
         |> trunc()
         |> max(1)
     }
   rescue
-    _ -> %{error_rate_max: @default_error_rate, average_latency_us_max: @default_average_latency_us}
+    _ ->
+      %{error_rate_max: @default_error_rate, average_latency_us_max: @default_average_latency_us}
   end
 
   defp request_totals(counters) do
@@ -110,7 +128,8 @@ defmodule Dunda.ReleaseHealth do
       {{:requests_total, _route, status}, count}, {requests, errors} when is_integer(status) ->
         {requests + max(count, 0), errors + if(status >= 500, do: max(count, 0), else: 0)}
 
-      _, acc -> acc
+      _, acc ->
+        acc
     end)
   end
 
@@ -122,7 +141,8 @@ defmodule Dunda.ReleaseHealth do
       {{:request_duration_count, _route}, route_count}, {duration, count} ->
         {duration, count + max(route_count, 0)}
 
-      _, acc -> acc
+      _, acc ->
+        acc
     end)
   end
 

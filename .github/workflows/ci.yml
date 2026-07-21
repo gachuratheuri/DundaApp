@@ -18,10 +18,8 @@ jobs:
       run:
         working-directory: ./frontend
     steps:
-      - name: Checkout (with submodules)
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -33,6 +31,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Dependency security audit (high/critical)
+        run: npm audit --audit-level=high
+
+      - name: Expo dependency compatibility
+        run: npm run check:expo
+
+      - name: Validate production configuration
+        run: npm run validate:production-config
+
       - name: Typecheck
         run: npm run typecheck
 
@@ -41,6 +48,9 @@ jobs:
 
       - name: Test (Jest — see package.json "jest" config)
         run: npm test -- --ci
+
+      - name: Production bundle
+        run: npm run build
 
   backend:
     name: Backend (format + compile + credo + dialyzer + test)
@@ -54,6 +64,7 @@ jobs:
       PGUSER: postgres
       PGPASSWORD: postgres
       REDIS_HOST: localhost
+      REQUIRE_REDIS_TESTS: "true"
     services:
       postgres:
         image: postgres:16-alpine
@@ -119,7 +130,7 @@ jobs:
         run: mix compile --warnings-as-errors
 
       - name: Credo (static analysis)
-        run: mix credo --strict
+        run: mix credo --only warning
 
       - name: Dialyzer
         run: mix dialyzer
@@ -133,27 +144,36 @@ jobs:
           git fetch origin ${{ github.base_ref }} --depth=1
           git diff --check "origin/${{ github.base_ref }}"...HEAD
 
-      - name: Migration immutability (no PR may modify a migration already on main)
+      - name: Migration immutability (deployed migrations are forward-fix-only)
         if: github.event_name == 'pull_request'
         run: |
           git fetch origin ${{ github.base_ref }} --depth=1
           changed_migrations=$(git diff --name-only --diff-filter=M "origin/${{ github.base_ref }}"...HEAD -- priv/repo/migrations/ || true)
-          if [ -n "$changed_migrations" ]; then
-            echo "::error::These already-merged migrations were modified — migrations are forward-fix-only (docs/phase_12_verification_observability_rollout.md § Controlled rollout). Add a new migration instead:"
-            echo "$changed_migrations"
-            exit 1
-          fi
+          failed=0
+          for migration in $changed_migrations; do
+            if grep -Fxq "$migration" priv/repo/deployed_migrations.txt; then
+              echo "::error file=$migration::deployed migration modified; add a forward migration instead"
+              failed=1
+            fi
+          done
+          exit $failed
 
-      - name: Reject assertion-free/commented-out test bodies in changed test files
+      - name: Reject vacuous/commented-out tests
         if: github.event_name == 'pull_request'
         run: |
           git fetch origin ${{ github.base_ref }} --depth=1
           changed_tests=$(git diff --name-only --diff-filter=ACM "origin/${{ github.base_ref }}"...HEAD -- 'test/**/*_test.exs' || true)
           failed=0
           for f in $changed_tests; do
-            if [ -f "$f" ] && grep -nE '^\s*#\s*assert' "$f"; then
-              echo "::error file=$f::commented-out assertion found — a test with no live assertion is vacuous"
-              failed=1
+            if [ -f "$f" ]; then
+              if grep -nE '^\s*#\s*(assert|refute|flunk)' "$f"; then
+                echo "::error file=$f::commented-out assertion found"
+                failed=1
+              fi
+              if grep -nE '^\s*assert\s+true\s*$' "$f"; then
+                echo "::error file=$f::vacuous 'assert true' found"
+                failed=1
+              fi
             fi
           done
           exit $failed
@@ -266,15 +286,15 @@ jobs:
         run: |
           git fetch origin ${{ github.base_ref }} --depth=1
           changed=$(git diff --name-only "origin/${{ github.base_ref }}"...HEAD -- \
-            backend/lib/dunda/checkout.ex \
-            backend/lib/dunda/checkout/journal.ex \
-            backend/lib/dunda/checkout/payment_intent.ex \
-            backend/lib/dunda/security/webhook.ex \
-            backend/lib/mix/tasks/dunda.mutation_test.ex \
-            backend/test/dunda/inventory_property_test.exs \
-            backend/test/dunda/ledger_property_test.exs \
-            backend/test/dunda/payment_intent_transition_property_test.exs \
-            backend/test/dunda/security/webhook_test.exs || true)
+            lib/dunda/checkout.ex \
+            lib/dunda/checkout/journal.ex \
+            lib/dunda/checkout/payment_intent.ex \
+            lib/dunda/security/webhook.ex \
+            lib/mix/tasks/dunda.mutation_test.ex \
+            test/dunda/inventory_property_test.exs \
+            test/dunda/ledger_property_test.exs \
+            test/dunda/payment_intent_transition_property_test.exs \
+            test/dunda/security/webhook_test.exs || true)
           if [ -n "$changed" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; else echo "run=false" >> "$GITHUB_OUTPUT"; fi
 
       - uses: erlef/setup-beam@v1

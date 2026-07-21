@@ -16,7 +16,15 @@ defmodule Dunda.Ticketing.TicketCredentialEvent do
 
   def changeset(event, attrs) do
     event
-    |> cast(attrs, [:ticket_id, :event_type, :credential_epoch, :public_key_fingerprint, :actor_user_id, :metadata, :occurred_at])
+    |> cast(attrs, [
+      :ticket_id,
+      :event_type,
+      :credential_epoch,
+      :public_key_fingerprint,
+      :actor_user_id,
+      :metadata,
+      :occurred_at
+    ])
     |> validate_required([:ticket_id, :event_type, :credential_epoch, :metadata, :occurred_at])
     |> validate_inclusion(:event_type, ~w(bound rebound revoked recovered))
     |> validate_number(:credential_epoch, greater_than_or_equal_to: 0)

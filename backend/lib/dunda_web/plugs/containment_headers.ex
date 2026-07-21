@@ -1,5 +1,5 @@
 defmodule DundaWeb.Plugs.ContainmentHeaders do
-  @moduledoc """Adds non-sensitive environment and containment markers to responses."""
+  @moduledoc "Adds non-sensitive environment and containment markers to responses."
 
   import Plug.Conn
 

@@ -2,15 +2,20 @@ defmodule DundaWeb.Organiser.EventEditorLive do
   use DundaWeb, :live_view
 
   alias Dunda.Events
-  alias Dunda.Events.Event
   alias Dunda.Organisations
 
   @impl true
   def mount(params, _session, socket) do
     socket =
       socket
-      |> assign(:organisation_ids, authorised_organisation_ids(socket.assigns.current_organiser.id))
-      |> assign(:organisation_id, first_authorised_organisation_id(socket.assigns.current_organiser.id))
+      |> assign(
+        :organisation_ids,
+        authorised_organisation_ids(socket.assigns.current_organiser.id)
+      )
+      |> assign(
+        :organisation_id,
+        first_authorised_organisation_id(socket.assigns.current_organiser.id)
+      )
       |> assign(:event_id, params["id"])
       |> assign(:action, socket.assigns.live_action)
       |> assign(:uploaded_files, [])
@@ -24,6 +29,7 @@ defmodule DundaWeb.Organiser.EventEditorLive do
               socket
               |> put_flash(:error, "Event not found.")
               |> push_navigate(to: ~p"/portal/events")
+
             event ->
               socket
               |> assign(:page_title, "Edit Event: #{event.name}")
@@ -35,10 +41,21 @@ defmodule DundaWeb.Organiser.EventEditorLive do
                 "capacity" => event.capacity
               })
               |> assign(:ticket_tiers, [
-                %{id: 1, name: "Regular Admission", price_cents: event.price_cents, capacity: event.capacity, description: "General entry"}
+                %{
+                  id: 1,
+                  name: "Regular Admission",
+                  price_cents: event.price_cents,
+                  capacity: event.capacity,
+                  description: "General entry"
+                }
               ])
               |> assign(:extras, [
-                %{id: 1, name: "VIP Secured Parking", price_cents: 50000, description: "Closest parking lot next to VIP gate"}
+                %{
+                  id: 1,
+                  name: "VIP Secured Parking",
+                  price_cents: 50000,
+                  description: "Closest parking lot next to VIP gate"
+                }
               ])
           end
 
@@ -49,11 +66,17 @@ defmodule DundaWeb.Organiser.EventEditorLive do
             "name" => "",
             "venue" => "",
             "starts_at" => "",
-            "price_cents" => 150000,
+            "price_cents" => 150_000,
             "capacity" => 1000
           })
           |> assign(:ticket_tiers, [
-            %{id: 1, name: "Regular Admission", price_cents: 150000, capacity: 1000, description: "General admission entry"}
+            %{
+              id: 1,
+              name: "Regular Admission",
+              price_cents: 150_000,
+              capacity: 1000,
+              description: "General admission entry"
+            }
           ])
           |> assign(:extras, [])
       end
@@ -62,6 +85,7 @@ defmodule DundaWeb.Organiser.EventEditorLive do
   end
 
   defp format_datetime_for_input(nil), do: ""
+
   defp format_datetime_for_input(dt) do
     Calendar.strftime(dt, "%Y-%m-%dT%H:%M")
   end
@@ -69,36 +93,42 @@ defmodule DundaWeb.Organiser.EventEditorLive do
   @impl true
   def handle_event("validate", params, socket) do
     event_params = Map.get(params, "event", %{})
-    
+
     # Parse and update tiers
     tiers_params = Map.get(params, "tiers", %{})
+
     updated_tiers =
       Enum.map(socket.assigns.ticket_tiers, fn tier ->
         case Map.get(tiers_params, to_string(tier.id)) do
-          nil -> tier
+          nil ->
+            tier
+
           p ->
             %{
-              tier |
-              name: p["name"] || tier.name,
-              price_cents: parse_cents(p["price_cents"]),
-              capacity: parse_integer(p["capacity"]),
-              description: p["description"] || tier.description
+              tier
+              | name: p["name"] || tier.name,
+                price_cents: parse_cents(p["price_cents"]),
+                capacity: parse_integer(p["capacity"]),
+                description: p["description"] || tier.description
             }
         end
       end)
 
     # Parse and update extras
     extras_params = Map.get(params, "extras", %{})
+
     updated_extras =
       Enum.map(socket.assigns.extras, fn extra ->
         case Map.get(extras_params, to_string(extra.id)) do
-          nil -> extra
+          nil ->
+            extra
+
           p ->
             %{
-              extra |
-              name: p["name"] || extra.name,
-              price_cents: parse_cents(p["price_cents"]),
-              description: p["description"] || extra.description
+              extra
+              | name: p["name"] || extra.name,
+                price_cents: parse_cents(p["price_cents"]),
+                description: p["description"] || extra.description
             }
         end
       end)
@@ -114,7 +144,15 @@ defmodule DundaWeb.Organiser.EventEditorLive do
   def handle_event("add_tier", _params, socket) do
     tiers = socket.assigns.ticket_tiers
     new_id = if Enum.empty?(tiers), do: 1, else: Enum.max_by(tiers, & &1.id).id + 1
-    new_tier = %{id: new_id, name: "New Tier", price_cents: 100000, capacity: 100, description: "Access level details"}
+
+    new_tier = %{
+      id: new_id,
+      name: "New Tier",
+      price_cents: 100_000,
+      capacity: 100,
+      description: "Access level details"
+    }
+
     {:noreply, assign(socket, :ticket_tiers, tiers ++ [new_tier])}
   end
 
@@ -122,12 +160,13 @@ defmodule DundaWeb.Organiser.EventEditorLive do
   def handle_event("remove_tier", %{"id" => id_str}, socket) do
     id = String.to_integer(id_str)
     # Don't delete the last tier
-    tiers = 
+    tiers =
       if length(socket.assigns.ticket_tiers) > 1 do
         Enum.reject(socket.assigns.ticket_tiers, &(&1.id == id))
       else
         socket.assigns.ticket_tiers
       end
+
     {:noreply, assign(socket, :ticket_tiers, tiers)}
   end
 
@@ -135,7 +174,14 @@ defmodule DundaWeb.Organiser.EventEditorLive do
   def handle_event("add_extra", _params, socket) do
     extras = socket.assigns.extras
     new_id = if Enum.empty?(extras), do: 1, else: Enum.max_by(extras, & &1.id).id + 1
-    new_extra = %{id: new_id, name: "New Extra", price_cents: 5000, description: "Voucher/Upgrade details"}
+
+    new_extra = %{
+      id: new_id,
+      name: "New Extra",
+      price_cents: 5000,
+      description: "Voucher/Upgrade details"
+    }
+
     {:noreply, assign(socket, :extras, extras ++ [new_extra])}
   end
 
@@ -149,15 +195,16 @@ defmodule DundaWeb.Organiser.EventEditorLive do
   @impl true
   def handle_event("save", params, socket) do
     event_params = Map.get(params, "event", %{})
-    
-    starts_at = 
+
+    starts_at =
       case DateTime.from_iso8601(event_params["starts_at"] <> ":00Z") do
         {:ok, dt, _} -> dt
         _ -> DateTime.add(DateTime.utc_now(), 30 * 86400, :second)
       end
 
-    primary_tier = List.first(socket.assigns.ticket_tiers) || %{price_cents: 150000, capacity: 1000}
-    
+    primary_tier =
+      List.first(socket.assigns.ticket_tiers) || %{price_cents: 150_000, capacity: 1000}
+
     attrs = %{
       name: event_params["name"] || "New Astral Event",
       venue: event_params["venue"] || "Nairobi Venue",
@@ -167,73 +214,94 @@ defmodule DundaWeb.Organiser.EventEditorLive do
       organisation_id: socket.assigns.organisation_id
     }
 
-    if is_nil(socket.assigns.organisation_id) do
+    if is_nil(socket.assigns.organisation_id) or
+         not Organisations.authorised?(
+           socket.assigns.current_organiser.id,
+           socket.assigns.organisation_id,
+           :manage_events
+         ) do
       {:noreply,
        socket
        |> put_flash(:error, "No authorised organisation is available.")
        |> push_navigate(to: ~p"/portal/events")}
     else
-    case socket.assigns.action do
-      :new ->
-        case Events.create_event(attrs) do
-          {:ok, _event} ->
-            {:noreply,
-             socket
-             |> put_flash(:info, "Event successfully published.")
-             |> push_navigate(to: ~p"/portal/events")}
-          {:error, _changeset} ->
-            {:noreply,
-             socket
-             |> put_flash(:info, "Event created (Offline Sandbox Mode)")
-             |> push_navigate(to: ~p"/portal/events")}
-        end
-
-      :edit ->
-        case Events.get_event_for_organisations(socket.assigns.event_id, socket.assigns.organisation_ids) do
-          nil ->
-            {:noreply,
-             socket
-             |> put_flash(:info, "Event updated (Offline Sandbox Mode)")
-             |> push_navigate(to: ~p"/portal/events")}
-          event ->
-            if Organisations.member?(socket.assigns.current_organiser.id, event.organisation_id, ~w(owner admin manager)) do
-              case Events.update_event(event, Map.put(attrs, :organisation_id, event.organisation_id)) do
-              {:ok, _event} ->
-                {:noreply,
-                 socket
-                 |> put_flash(:info, "Event updated successfully.")
-                 |> push_navigate(to: ~p"/portal/events")}
-              {:error, _changeset} ->
-                {:noreply,
-                 socket
-                 |> put_flash(:info, "Event updated (Offline Sandbox Mode)")
-                 |> push_navigate(to: ~p"/portal/events")}
-              end
-            else
+      case socket.assigns.action do
+        :new ->
+          case Events.create_event(attrs) do
+            {:ok, _event} ->
               {:noreply,
                socket
-               |> put_flash(:error, "You are not authorised for this organisation.")
+               |> put_flash(:info, "Event successfully published.")
                |> push_navigate(to: ~p"/portal/events")}
-            end
-        end
-    end
+
+            {:error, _changeset} ->
+              {:noreply,
+               socket
+               |> put_flash(:info, "Event created (Offline Sandbox Mode)")
+               |> push_navigate(to: ~p"/portal/events")}
+          end
+
+        :edit ->
+          case Events.get_event_for_organisations(
+                 socket.assigns.event_id,
+                 socket.assigns.organisation_ids
+               ) do
+            nil ->
+              {:noreply,
+               socket
+               |> put_flash(:info, "Event updated (Offline Sandbox Mode)")
+               |> push_navigate(to: ~p"/portal/events")}
+
+            event ->
+              if Organisations.member?(
+                   socket.assigns.current_organiser.id,
+                   event.organisation_id,
+                   ~w(owner admin manager)
+                 ) do
+                case Events.update_event(
+                       event,
+                       Map.put(attrs, :organisation_id, event.organisation_id)
+                     ) do
+                  {:ok, _event} ->
+                    {:noreply,
+                     socket
+                     |> put_flash(:info, "Event updated successfully.")
+                     |> push_navigate(to: ~p"/portal/events")}
+
+                  {:error, _changeset} ->
+                    {:noreply,
+                     socket
+                     |> put_flash(:info, "Event updated (Offline Sandbox Mode)")
+                     |> push_navigate(to: ~p"/portal/events")}
+                end
+              else
+                {:noreply,
+                 socket
+                 |> put_flash(:error, "You are not authorised for this organisation.")
+                 |> push_navigate(to: ~p"/portal/events")}
+              end
+          end
+      end
     end
   end
 
   defp first_authorised_organisation_id(user_id) do
-    case Organisations.list_organisations_for_user(user_id) do
+    case Organisations.list_organisations_for_user(user_id, ~w(owner admin manager)) do
       [%{id: id} | _] -> id
       [] -> nil
     end
   end
 
   defp authorised_organisation_ids(user_id) do
-    Organisations.list_organisations_for_user(user_id) |> Enum.map(& &1.id)
+    Organisations.list_organisations_for_user(user_id, ~w(owner admin manager))
+    |> Enum.map(& &1.id)
   end
 
   defp parse_cents(str) do
     case Float.parse(str || "") do
-      {val, _} -> round(val * 100)
+      {val, _} ->
+        round(val * 100)
+
       :error ->
         case Integer.parse(str || "") do
           {val, _} -> val * 100
@@ -251,13 +319,16 @@ defmodule DundaWeb.Organiser.EventEditorLive do
 
   # Helper formatters
   defp format_cents_to_shillings(0), do: "0"
+
   defp format_cents_to_shillings(cents) do
     to_string(div(cents, 100))
   end
 
   defp format_price(0), do: "FREE"
+
   defp format_price(cents) do
     shillings = div(cents, 100)
+
     formatted =
       shillings
       |> Integer.to_charlist()
@@ -265,15 +336,16 @@ defmodule DundaWeb.Organiser.EventEditorLive do
       |> Enum.chunk_every(3)
       |> Enum.join(",")
       |> String.reverse()
-    
+
     "KSh " <> formatted
   end
 
   defp format_date_preview(starts_at_str) do
     case DateTime.from_iso8601(starts_at_str <> ":00Z") do
-      {:ok, dt, _} -> 
+      {:ok, dt, _} ->
         Calendar.strftime(dt, "%b %d, %Y · %I:%M %p")
-      _ -> 
+
+      _ ->
         "TBD Date & Time"
     end
   rescue
@@ -523,7 +595,6 @@ defmodule DundaWeb.Organiser.EventEditorLive do
 
                     <!-- Simulated Stock capacity indicator -->
                     <% 
-                      first_tier = List.first(@ticket_tiers) || %{capacity: 1000}
                       total_cap = Enum.reduce(@ticket_tiers, 0, fn t, acc -> acc + t.capacity end)
                     %>
                     <div class="mt-6 space-y-1">

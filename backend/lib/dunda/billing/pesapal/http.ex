@@ -151,14 +151,22 @@ defmodule Dunda.Billing.Pesapal.HTTP do
   end
 
   defp log_and_return(path, status, body) do
-    Logger.warning("[Pesapal] #{path} returned #{status}: #{inspect(Dunda.Logging.Redactor.redact(body))}")
+    Logger.warning(
+      "[Pesapal] #{path} returned #{status}: #{inspect(Dunda.Logging.Redactor.redact(body))}"
+    )
+
     {:error, {:http_status, status, body}}
   end
 
   defp bearer(token), do: [{"authorization", "Bearer #{token}"}, {"accept", "application/json"}]
 
   defp base_req do
-    Req.new(base_url: config!(:base_url), retry: :transient, max_retries: 2, receive_timeout: 20_000)
+    Req.new(
+      base_url: config!(:base_url),
+      retry: :transient,
+      max_retries: 2,
+      receive_timeout: 20_000
+    )
   end
 
   defp config!(key), do: Application.fetch_env!(:dunda, :pesapal) |> Keyword.fetch!(key)

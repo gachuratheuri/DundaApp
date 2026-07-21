@@ -9,6 +9,7 @@ defmodule Dunda.MixProject do
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
+      dialyzer: [plt_add_apps: [:mix]],
       deps: deps(),
       releases: releases()
     ]
@@ -49,7 +50,6 @@ defmodule Dunda.MixProject do
       {:oban, "~> 2.15"},
       {:gen_state_machine, "~> 3.0"},
       {:cloak_ecto, "~> 1.3"},
-      {:bcrypt_elixir, "~> 3.0"},
       {:bloomex, "~> 1.0"},
       {:ecto_sql, "~> 3.10"},
       {:postgrex, ">= 0.0.0"},

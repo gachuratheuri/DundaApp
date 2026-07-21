@@ -27,16 +27,66 @@ defmodule Dunda.Ticketing.ScannerAdmission do
 
   def changeset(admission, attrs) do
     admission
-    |> cast(attrs, [:admission_id, :ticket_id, :event_id, :scanner_device_id, :manifest_version, :protocol_version, :time_step, :proof_nonce, :proof_signature, :request_nonce, :request_signature, :gate, :result, :reason, :clock_offset_seconds, :observed_at, :coordinator_received_at, :uploaded_at])
-    |> validate_required([:admission_id, :ticket_id, :event_id, :scanner_device_id, :manifest_version, :protocol_version, :time_step, :proof_nonce, :proof_signature, :request_nonce, :request_signature, :result, :observed_at, :coordinator_received_at])
+    |> cast(attrs, [
+      :admission_id,
+      :ticket_id,
+      :event_id,
+      :scanner_device_id,
+      :manifest_version,
+      :protocol_version,
+      :time_step,
+      :proof_nonce,
+      :proof_signature,
+      :request_nonce,
+      :request_signature,
+      :gate,
+      :result,
+      :reason,
+      :clock_offset_seconds,
+      :observed_at,
+      :coordinator_received_at,
+      :uploaded_at
+    ])
+    |> validate_required([
+      :admission_id,
+      :ticket_id,
+      :event_id,
+      :scanner_device_id,
+      :manifest_version,
+      :protocol_version,
+      :time_step,
+      :proof_nonce,
+      :proof_signature,
+      :request_nonce,
+      :request_signature,
+      :result,
+      :observed_at,
+      :coordinator_received_at
+    ])
     |> validate_inclusion(:protocol_version, [2])
     |> validate_inclusion(:result, ~w(admitted rejected duplicate manual_review))
     |> validate_number(:manifest_version, greater_than: 0)
     |> validate_number(:time_step, greater_than_or_equal_to: 0)
-    |> validate_change(:proof_nonce, fn :proof_nonce, value -> if is_binary(value) and byte_size(value) in 16..64, do: [], else: [proof_nonce: "must be 16–64 bytes"] end)
-    |> validate_change(:proof_signature, fn :proof_signature, value -> if is_binary(value) and byte_size(value) == 64, do: [], else: [proof_signature: "must be a 64-byte Ed25519 signature"] end)
-    |> validate_change(:request_nonce, fn :request_nonce, value -> if is_binary(value) and byte_size(value) in 16..64, do: [], else: [request_nonce: "must be 16–64 bytes"] end)
-    |> validate_change(:request_signature, fn :request_signature, value -> if is_binary(value) and byte_size(value) == 64, do: [], else: [request_signature: "must be a 64-byte Ed25519 signature"] end)
+    |> validate_change(:proof_nonce, fn :proof_nonce, value ->
+      if is_binary(value) and byte_size(value) in 16..64,
+        do: [],
+        else: [proof_nonce: "must be 16–64 bytes"]
+    end)
+    |> validate_change(:proof_signature, fn :proof_signature, value ->
+      if is_binary(value) and byte_size(value) == 64,
+        do: [],
+        else: [proof_signature: "must be a 64-byte Ed25519 signature"]
+    end)
+    |> validate_change(:request_nonce, fn :request_nonce, value ->
+      if is_binary(value) and byte_size(value) in 16..64,
+        do: [],
+        else: [request_nonce: "must be 16–64 bytes"]
+    end)
+    |> validate_change(:request_signature, fn :request_signature, value ->
+      if is_binary(value) and byte_size(value) == 64,
+        do: [],
+        else: [request_signature: "must be a 64-byte Ed25519 signature"]
+    end)
     |> assoc_constraint(:ticket)
     |> assoc_constraint(:event)
     |> assoc_constraint(:scanner_device)

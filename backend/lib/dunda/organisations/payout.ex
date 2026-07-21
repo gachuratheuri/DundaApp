@@ -33,11 +33,26 @@ defmodule Dunda.Organisations.Payout do
   def changeset(payout, attrs) do
     payout
     |> cast(attrs, [
-      :amount_cents, :currency, :mpesa_phone_encrypted, :status, :b2c_conversation_id,
-      :b2c_receipt, :failure_reason, :period_start, :period_end, :paid_at,
-      :organisation_id, :idempotency_key
+      :amount_cents,
+      :currency,
+      :mpesa_phone_encrypted,
+      :status,
+      :b2c_conversation_id,
+      :b2c_receipt,
+      :failure_reason,
+      :period_start,
+      :period_end,
+      :paid_at,
+      :organisation_id,
+      :idempotency_key
     ])
-    |> validate_required([:amount_cents, :currency, :mpesa_phone_encrypted, :status, :organisation_id])
+    |> validate_required([
+      :amount_cents,
+      :currency,
+      :mpesa_phone_encrypted,
+      :status,
+      :organisation_id
+    ])
     |> validate_inclusion(:status, @statuses)
     |> validate_number(:amount_cents, greater_than: 0)
     |> assoc_constraint(:organisation)

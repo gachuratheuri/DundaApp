@@ -38,12 +38,16 @@ defmodule Dunda.Ticketing.EntitlementTest do
     hmac = :crypto.mac(:hmac, :sha, raw_secret, msg)
     <<_::binary-size(19), last::integer-size(8)>> = hmac
     offset = last &&& 0x0F
-    <<_::binary-size(offset), byte1::integer-size(8), byte2::integer-size(8), byte3::integer-size(8), byte4::integer-size(8), _::binary>> = hmac
+
+    <<_::binary-size(offset), byte1::integer-size(8), byte2::integer-size(8),
+      byte3::integer-size(8), byte4::integer-size(8), _::binary>> = hmac
+
     binary =
-      ((byte1 &&& 0x7F) <<< 24)
-      ||| (byte2 <<< 16)
-      ||| (byte3 <<< 8)
-      ||| byte4
+      (byte1 &&& 0x7F) <<< 24 |||
+        byte2 <<< 16 |||
+        byte3 <<< 8 |||
+        byte4
+
     code = rem(binary, 1_000_000)
     to_string(code) |> String.pad_leading(6, "0")
   end

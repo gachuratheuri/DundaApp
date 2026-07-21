@@ -47,39 +47,41 @@ defmodule Dunda.Billing do
       {:error, :phase_0_containment}
     else
       case get_order_by_tracking_id(order_tracking_id) do
-      nil ->
-        {:error, :order_not_found}
+        nil ->
+          {:error, :order_not_found}
 
-      order ->
-        case Pesapal.transaction_status(order_tracking_id) do
-          {:ok, status} ->
-            new_status = classify(status)
+        order ->
+          case Pesapal.transaction_status(order_tracking_id) do
+            {:ok, status} ->
+              new_status = classify(status)
 
-            # Fulfilment is part of the completion invariant.  Do not mark a
-            # payment complete when the authoritative ticket transaction has
-            # failed; a retry can then safely re-run the same fulfillment key.
-            with :ok <- ensure_order_fulfilled(order, new_status) do
-              case update_status(order, %{
-                     status: new_status,
-                     pesapal_status: status["payment_status_description"]
-                   }) do
-                {:ok, updated} = result ->
-                  _ = Dunda.Audit.record(%{
-                    action: "billing.order_reconciled",
-                    resource_type: "order",
-                    resource_id: to_string(updated.id),
-                    metadata: %{status: new_status}
-                  })
+              # Fulfilment is part of the completion invariant.  Do not mark a
+              # payment complete when the authoritative ticket transaction has
+              # failed; a retry can then safely re-run the same fulfillment key.
+              with :ok <- ensure_order_fulfilled(order, new_status) do
+                case update_status(order, %{
+                       status: new_status,
+                       pesapal_status: status["payment_status_description"]
+                     }) do
+                  {:ok, updated} = result ->
+                    _ =
+                      Dunda.Audit.record(%{
+                        action: "billing.order_reconciled",
+                        resource_type: "order",
+                        resource_id: to_string(updated.id),
+                        metadata: %{status: new_status}
+                      })
 
-                  result
+                    result
 
-                error -> error
+                  error ->
+                    error
+                end
               end
-            end
 
-          {:error, reason} ->
-            {:error, reason}
-        end
+            {:error, reason} ->
+              {:error, reason}
+          end
       end
     end
   end
@@ -94,7 +96,8 @@ defmodule Dunda.Billing do
         %Order{status: "pending", order_tracking_id: nil} ->
           with {:ok, %{order_tracking_id: tracking_id, redirect_url: url}} <-
                  Pesapal.submit_order(order_payload(order, %{})),
-               {:ok, updated} <- update_status(order, %{order_tracking_id: tracking_id, redirect_url: url}) do
+               {:ok, updated} <-
+                 update_status(order, %{order_tracking_id: tracking_id, redirect_url: url}) do
             {:ok, updated}
           end
 
@@ -112,7 +115,8 @@ defmodule Dunda.Billing do
   def payable_totals do
     from(o in Order,
       where:
-        o.kind == "primary" and o.status == "completed" and o.payout_status == "unpaid" and not is_nil(o.organisation_id),
+        o.kind == "primary" and o.status == "completed" and o.payout_status == "unpaid" and
+          not is_nil(o.organisation_id),
       group_by: o.organisation_id,
       select: {o.organisation_id, sum(o.amount_cents)}
     )
@@ -134,7 +138,9 @@ defmodule Dunda.Billing do
   @spec queued_order_ids(pos_integer()) :: [integer()]
   def queued_order_ids(organisation_id) do
     from(o in Order,
-      where: o.organisation_id == ^organisation_id and o.kind == "primary" and o.status == "completed" and o.payout_status == "queued",
+      where:
+        o.organisation_id == ^organisation_id and o.kind == "primary" and o.status == "completed" and
+          o.payout_status == "queued",
       order_by: [asc: o.id],
       select: o.id
     )
@@ -145,7 +151,9 @@ defmodule Dunda.Billing do
   @spec unqueue_organisation_orders(pos_integer()) :: {non_neg_integer(), nil}
   def unqueue_organisation_orders(organisation_id) do
     from(o in Order,
-      where: o.organisation_id == ^organisation_id and o.kind == "primary" and o.status == "completed" and o.payout_status == "queued"
+      where:
+        o.organisation_id == ^organisation_id and o.kind == "primary" and o.status == "completed" and
+          o.payout_status == "queued"
     )
     |> Repo.update_all(set: [payout_status: "unpaid", updated_at: DateTime.utc_now()])
   end
@@ -158,7 +166,8 @@ defmodule Dunda.Billing do
     else
       from(o in Order,
         where:
-          o.organisation_id == ^organisation_id and o.kind == "primary" and o.status == "completed" and
+          o.organisation_id == ^organisation_id and o.kind == "primary" and
+            o.status == "completed" and
             o.payout_status in ["queued", "unpaid"]
       )
       |> Repo.update_all(set: [payout_status: "paid", updated_at: DateTime.utc_now()])
@@ -187,30 +196,36 @@ defmodule Dunda.Billing do
              {:ok, %{order_tracking_id: otid, redirect_url: url}} <-
                Pesapal.submit_order(order_payload(order, attrs)),
              {:ok, order} <- update_status(order, %{order_tracking_id: otid, redirect_url: url}) do
-          _ = Dunda.Audit.record(%{
-            actor_user_id: attrs.user_id,
-            action: "billing.order_created",
-            resource_type: "order",
-            resource_id: to_string(order.id),
-            metadata: %{amount_cents: order.amount_cents, quantity: order.quantity}
-          })
+          _ =
+            Dunda.Audit.record(%{
+              actor_user_id: attrs.user_id,
+              action: "billing.order_created",
+              resource_type: "order",
+              resource_id: to_string(order.id),
+              metadata: %{amount_cents: order.amount_cents, quantity: order.quantity}
+            })
 
           {:ok, %{order: order, redirect_url: url}}
         else
           {:error, %Ecto.Changeset{} = changeset} ->
             if idempotency_conflict?(changeset) do
-              case Repo.get_by(Order, user_id: attrs.user_id, idempotency_key: attrs.idempotency_key) do
+              case Repo.get_by(Order,
+                     user_id: attrs.user_id,
+                     idempotency_key: attrs.idempotency_key
+                   ) do
                 %Order{order_tracking_id: tracking_id, redirect_url: url} = existing
                 when is_binary(tracking_id) and is_binary(url) ->
                   {:ok, %{order: existing, redirect_url: url}}
 
-                _ -> {:error, :idempotency_incomplete}
+                _ ->
+                  {:error, :idempotency_incomplete}
               end
             else
               {:error, changeset}
             end
 
-          {:error, reason} -> {:error, reason}
+          {:error, reason} ->
+            {:error, reason}
         end
     end
   end
@@ -239,7 +254,8 @@ defmodule Dunda.Billing do
 
       {:ok,
        %{
-         merchant_reference: "dunda_" <> Base.url_encode64(:crypto.hash(:sha256, idempotency_key), padding: false),
+         merchant_reference:
+           "dunda_" <> Base.url_encode64(:crypto.hash(:sha256, idempotency_key), padding: false),
          idempotency_key: idempotency_key,
          amount_cents: amount_cents,
          currency: event.currency || "KES",
@@ -263,6 +279,7 @@ defmodule Dunda.Billing do
   defp validate_event(_), do: {:error, :event_not_on_sale}
 
   defp resolve_tier(_event_id, nil), do: {:ok, nil}
+
   defp resolve_tier(event_id, tier_id) do
     case Ticketing.get_event_tier(event_id, tier_id) do
       nil -> {:error, :not_found}
@@ -271,29 +288,36 @@ defmodule Dunda.Billing do
   end
 
   defp validate_tier(nil, _quantity), do: :ok
-  defp validate_tier(%{status: "on_sale", max_per_order: max}, quantity) when quantity <= max, do: :ok
+
+  defp validate_tier(%{status: "on_sale", max_per_order: max}, quantity) when quantity <= max,
+    do: :ok
+
   defp validate_tier(%{status: "on_sale"}, _), do: {:error, :max_per_order_exceeded}
   defp validate_tier(_, _), do: {:error, :tier_not_on_sale}
 
   defp parse_id(value) when is_integer(value) and value > 0, do: {:ok, value}
+
   defp parse_id(value) when is_binary(value) do
     case Integer.parse(value) do
       {id, ""} when id > 0 -> {:ok, id}
       _ -> {:error, :invalid_id}
     end
   end
+
   defp parse_id(_), do: {:error, :invalid_id}
 
   defp parse_optional_id(nil), do: {:ok, nil}
   defp parse_optional_id(value), do: parse_id(value)
 
   defp parse_positive_integer(value) when is_integer(value) and value > 0, do: {:ok, value}
+
   defp parse_positive_integer(value) when is_binary(value) do
     case Integer.parse(value) do
       {n, ""} when n > 0 -> {:ok, n}
       _ -> {:error, :invalid_quantity}
     end
   end
+
   defp parse_positive_integer(_), do: {:error, :invalid_quantity}
 
   defp update_status(order, attrs) do
@@ -315,7 +339,9 @@ defmodule Dunda.Billing do
   # idempotent transfer check on duplicate provider callbacks.
   defp ensure_order_fulfilled(%Order{status: "completed", kind: "resale"} = order, _new_status) do
     case Dunda.Market.complete_resale_purchase(order.id) do
-      {:ok, _listing} -> :ok
+      {:ok, _listing} ->
+        :ok
+
       {:error, reason} ->
         _ = Dunda.Billing.Refunds.request_for_transfer_failure(order.id, reason)
         {:error, {:resale_transfer_refund_pending, reason}}
@@ -337,7 +363,9 @@ defmodule Dunda.Billing do
 
   defp ensure_order_fulfilled(%Order{kind: "resale"} = order, "completed") do
     case Dunda.Market.complete_resale_purchase(order.id, confirmed?: true) do
-      {:ok, _listing} -> :ok
+      {:ok, _listing} ->
+        :ok
+
       {:error, reason} ->
         _ = Dunda.Billing.Refunds.request_for_transfer_failure(order.id, reason)
         {:error, {:resale_transfer_refund_pending, reason}}
@@ -352,7 +380,9 @@ defmodule Dunda.Billing do
          tier <- if(order.ticket_tier_id, do: Ticketing.get_tier(order.ticket_tier_id)),
          result <- Ticketing.issue_tickets(order, event, user, order.quantity, tier: tier) do
       case result do
-        {:ok, _tickets} -> :ok
+        {:ok, _tickets} ->
+          :ok
+
         {:error, reason} ->
           if Ticketing.fulfilled_order?(order.id, order.quantity), do: :ok, else: {:error, reason}
       end
@@ -379,8 +409,4 @@ defmodule Dunda.Billing do
   defp classify(%{"payment_status_description" => "Completed"}), do: "completed"
   defp classify(%{"payment_status_description" => "Failed"}), do: "failed"
   defp classify(_), do: "pending"
-
-  defp generate_reference do
-    "dunda_" <> (:crypto.strong_rand_bytes(12) |> Base.url_encode64(padding: false))
-  end
 end

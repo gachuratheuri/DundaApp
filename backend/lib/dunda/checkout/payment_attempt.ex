@@ -13,12 +13,24 @@ defmodule Dunda.Checkout.PaymentAttempt do
     field :failure_reason, :string
     field :submitted_at, :utc_datetime
     field :completed_at, :utc_datetime
-    belongs_to :payment_intent, Dunda.Checkout.PaymentIntent
+    belongs_to :payment_intent, Dunda.Checkout.PaymentIntent, type: :binary_id
     timestamps()
   end
+
   def changeset(attempt, attrs) do
     attempt
-    |> cast(attrs, [:payment_intent_id, :provider, :attempt_key, :provider_checkout_id, :status, :request_payload, :response_payload, :failure_reason, :submitted_at, :completed_at])
+    |> cast(attrs, [
+      :payment_intent_id,
+      :provider,
+      :attempt_key,
+      :provider_checkout_id,
+      :status,
+      :request_payload,
+      :response_payload,
+      :failure_reason,
+      :submitted_at,
+      :completed_at
+    ])
     |> validate_required([:payment_intent_id, :provider, :attempt_key, :status])
     |> validate_inclusion(:status, @statuses)
     |> assoc_constraint(:payment_intent)

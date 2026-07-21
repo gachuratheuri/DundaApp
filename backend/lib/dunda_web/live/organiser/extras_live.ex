@@ -3,14 +3,16 @@ defmodule DundaWeb.Organiser.ExtrasLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, :extras, [
-      %{id: 1, name: "VIP Parking", price: 100000, quantity: 50, active: true},
-      %{id: 2, name: "Bottle Service", price: 2500000, quantity: 10, active: true}
-    ])}
+    {:ok,
+     assign(socket, :extras, [
+       %{id: 1, name: "VIP Parking", price: 100_000, quantity: 50, active: true},
+       %{id: 2, name: "Bottle Service", price: 2_500_000, quantity: 10, active: true}
+     ])}
   end
 
   defp format_currency(cents) do
     shillings = div(cents, 100)
+
     formatted =
       shillings
       |> Integer.to_charlist()
@@ -18,7 +20,7 @@ defmodule DundaWeb.Organiser.ExtrasLive do
       |> Enum.chunk_every(3)
       |> Enum.join(",")
       |> String.reverse()
-    
+
     "KSh " <> formatted
   end
 

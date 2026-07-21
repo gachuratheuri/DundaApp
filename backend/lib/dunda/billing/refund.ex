@@ -30,9 +30,18 @@ defmodule Dunda.Billing.Refund do
   def changeset(refund, attrs) do
     refund
     |> cast(attrs, [
-      :amount_cents, :currency, :status, :reason, :idempotency_key,
-      :provider_reference, :failure_reason, :submitted_at, :completed_at,
-      :order_id, :ticket_id, :requested_by_id
+      :amount_cents,
+      :currency,
+      :status,
+      :reason,
+      :idempotency_key,
+      :provider_reference,
+      :failure_reason,
+      :submitted_at,
+      :completed_at,
+      :order_id,
+      :ticket_id,
+      :requested_by_id
     ])
     |> validate_required([:amount_cents, :currency, :status, :reason, :idempotency_key, :order_id])
     |> validate_number(:amount_cents, greater_than: 0)
@@ -47,9 +56,12 @@ defmodule Dunda.Billing.Refund do
 
   defp validate_transition(changeset) do
     case get_change(changeset, :status) do
-      nil -> changeset
+      nil ->
+        changeset
+
       next ->
         current = changeset.data.status || "pending"
+
         allowed = %{
           "pending" => ~w(pending submitted failed manual_review),
           "submitted" => ~w(submitted succeeded failed manual_review),
@@ -58,7 +70,9 @@ defmodule Dunda.Billing.Refund do
           "manual_review" => ~w(manual_review succeeded failed)
         }
 
-        if next in Map.get(allowed, current, []), do: changeset, else: add_error(changeset, :status, "invalid monotonic refund transition")
+        if next in Map.get(allowed, current, []),
+          do: changeset,
+          else: add_error(changeset, :status, "invalid monotonic refund transition")
     end
   end
 end

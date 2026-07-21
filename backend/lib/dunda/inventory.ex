@@ -9,14 +9,12 @@ defmodule Dunda.Inventory do
     * `"event:<event_id>"` — legacy fallback for events with no tiers
       (e.g. scraped events).
 
-  Acquisition is serialised through a per-pool `InventoryPoolServer` (which
-  also seeds the Redis counter from Postgres on first use). Release and commit
-  are single atomic Lua scripts executed directly against Redis: they need no
-  serialisation point, and going through a GenServer would silently drop the
-  operation when the pool process is not running — fatal for `commit_escrow/2`,
-  where a drop means the reclaimer later re-credits already-sold tickets.
+  PostgreSQL is the production authority. The GenServer/Lua paths remain only
+  as an explicitly gated legacy migration aid; new checkout code never calls
+  them. Redis remaining counts are rebuildable discovery projections.
   """
   require Logger
+  import Ecto.Query, only: [from: 2]
 
   alias Dunda.Ticketing.InventoryPoolServer
 
@@ -84,7 +82,8 @@ defmodule Dunda.Inventory do
   Atomically reserve `quantity` tickets from `pool_id` into escrow for
   `owner_id` (the checkout's transaction id). Returns `:ok` or `{:error, reason}`.
   """
-  @spec acquire(pool_id(), owner_id(), pos_integer(), String.t() | integer()) :: :ok | {:error, atom()}
+  @spec acquire(pool_id(), owner_id(), pos_integer(), String.t() | integer()) ::
+          :ok | {:error, atom()}
   def acquire(pool_id, owner_id, quantity, user_id)
       when is_integer(quantity) and quantity > 0 do
     case authority() do
@@ -101,11 +100,15 @@ defmodule Dunda.Inventory do
   """
   @spec release_escrow(pool_id(), owner_id()) :: :ok | {:error, atom()}
   def release_escrow(pool_id, owner_id) do
-    if authority() == :postgres, do: {:error, :postgres_authority_required}, else: release_escrow_legacy(pool_id, owner_id)
+    if authority() == :postgres,
+      do: {:error, :postgres_authority_required},
+      else: release_escrow_legacy(pool_id, owner_id)
   end
 
   defp release_escrow_legacy(pool_id, owner_id) do
-    case run_lua(@release_lua, [inventory_key(pool_id), escrow_key(pool_id)], [to_string(owner_id)]) do
+    case run_lua(@release_lua, [inventory_key(pool_id), escrow_key(pool_id)], [
+           to_string(owner_id)
+         ]) do
       :ok ->
         :ok
 
@@ -127,7 +130,9 @@ defmodule Dunda.Inventory do
   """
   @spec commit_escrow(pool_id(), owner_id()) :: :ok | {:error, term()}
   def commit_escrow(pool_id, owner_id) do
-    if authority() == :postgres, do: {:error, :postgres_authority_required}, else: run_lua(@commit_lua, [escrow_key(pool_id)], [to_string(owner_id)])
+    if authority() == :postgres,
+      do: {:error, :postgres_authority_required},
+      else: run_lua(@commit_lua, [escrow_key(pool_id)], [to_string(owner_id)])
   end
 
   defp run_lua(script, keys, argv) do
@@ -138,15 +143,36 @@ defmodule Dunda.Inventory do
   end
 
   @doc """
-  Live remaining count for `pool_id`, or `fallback` when the counter has not
-  been seeded (or Redis is unreachable).
+  Projected remaining count for `pool_id`. If Redis is absent, malformed, or
+  unreachable under PostgreSQL authority, read the authoritative pool row.
   """
   @spec remaining(pool_id(), integer() | nil) :: integer() | nil
   def remaining(pool_id, fallback \\ nil) do
     case Redix.command(:redix, ["GET", inventory_key(pool_id)]) do
-      {:ok, nil} -> fallback
-      {:ok, value} -> String.to_integer(value)
-      _ -> fallback
+      {:ok, nil} -> authoritative_remaining(pool_id, fallback)
+      {:ok, value} -> parse_remaining(value, pool_id, fallback)
+      _ -> authoritative_remaining(pool_id, fallback)
     end
+  end
+
+  defp parse_remaining(value, pool_id, fallback) do
+    case Integer.parse(value) do
+      {remaining, ""} when remaining >= 0 -> remaining
+      _ -> authoritative_remaining(pool_id, fallback)
+    end
+  end
+
+  defp authoritative_remaining(pool_id, fallback) do
+    if authority() == :postgres do
+      Dunda.Repo.one(
+        from p in Dunda.Checkout.InventoryPool,
+          where: p.pool_key == ^pool_id,
+          select: p.capacity - p.reserved - p.sold
+      ) || fallback
+    else
+      fallback
+    end
+  rescue
+    _ -> fallback
   end
 end

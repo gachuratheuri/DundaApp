@@ -14,32 +14,35 @@ defmodule DundaWeb.Organiser.EventsLive do
         _ -> []
       end
 
-    events = Enum.map(events, fn e ->
-      # Convert schema structs to maps + append fields for listing
-      status =
-        cond do
-          e.remaining == 0 -> "Sold Out"
-          DateTime.compare(e.starts_at, DateTime.utc_now()) == :lt -> "Draft"
-          true -> "On Sale"
-        end
-      
-      # Simulate realistic waitlist metrics for sold-out/low stock items
-      waitlist_count = if status == "Sold Out", do: div(e.capacity, 4), else: 0
-      unmet_demand = if waitlist_count > 0, do: min(div(waitlist_count * 100, e.capacity), 100), else: 0
+    events =
+      Enum.map(events, fn e ->
+        # Convert schema structs to maps + append fields for listing
+        status =
+          cond do
+            e.remaining == 0 -> "Sold Out"
+            DateTime.compare(e.starts_at, DateTime.utc_now()) == :lt -> "Draft"
+            true -> "On Sale"
+          end
 
-      %{
-        id: e.id,
-        name: e.name,
-        venue: e.venue,
-        starts_at: e.starts_at,
-        price_cents: e.price_cents,
-        capacity: e.capacity,
-        remaining: e.remaining,
-        status: status,
-        waitlist_count: waitlist_count,
-        unmet_demand_percent: unmet_demand
-      }
-    end)
+        # Simulate realistic waitlist metrics for sold-out/low stock items
+        waitlist_count = if status == "Sold Out", do: div(e.capacity, 4), else: 0
+
+        unmet_demand =
+          if waitlist_count > 0, do: min(div(waitlist_count * 100, e.capacity), 100), else: 0
+
+        %{
+          id: e.id,
+          name: e.name,
+          venue: e.venue,
+          starts_at: e.starts_at,
+          price_cents: e.price_cents,
+          capacity: e.capacity,
+          remaining: e.remaining,
+          status: status,
+          waitlist_count: waitlist_count,
+          unmet_demand_percent: unmet_demand
+        }
+      end)
 
     {:ok, assign(socket, :events, events)}
   end
@@ -49,13 +52,15 @@ defmodule DundaWeb.Organiser.EventsLive do
     |> DateTime.shift_zone!("Africa/Nairobi")
     |> Calendar.strftime("%b %d, %Y · %I:%M %p")
   rescue
-    _ -> 
+    _ ->
       Calendar.strftime(datetime, "%b %d, %Y · %I:%M %p")
   end
 
   defp format_price(0), do: "FREE"
+
   defp format_price(cents) do
     shillings = div(cents, 100)
+
     formatted =
       shillings
       |> Integer.to_charlist()
@@ -63,7 +68,7 @@ defmodule DundaWeb.Organiser.EventsLive do
       |> Enum.chunk_every(3)
       |> Enum.join(",")
       |> String.reverse()
-    
+
     "KSh " <> formatted
   end
 
@@ -85,7 +90,7 @@ defmodule DundaWeb.Organiser.EventsLive do
           <div>
             <.link navigate={~p"/portal/events/new"} class="bg-nebulamagenta text-white font-black uppercase tracking-wider text-xs px-5 py-3 hover:bg-white hover:text-black transition-all transform hover:-translate-y-0.5 rounded-none border border-nebulamagenta glow-magenta">
               + Create New Event
-            </link>
+            </.link>
           </div>
         </div>
 

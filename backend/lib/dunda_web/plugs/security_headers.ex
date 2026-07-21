@@ -1,5 +1,5 @@
 defmodule DundaWeb.Plugs.SecurityHeaders do
-  @moduledoc """Explicit browser security policy for API and organiser responses."""
+  @moduledoc "Explicit browser security policy for API and organiser responses."
 
   import Plug.Conn
 

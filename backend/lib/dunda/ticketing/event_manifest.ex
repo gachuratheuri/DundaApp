@@ -19,12 +19,34 @@ defmodule Dunda.Ticketing.EventManifest do
 
   def changeset(manifest, attrs) do
     manifest
-    |> cast(attrs, [:event_id, :version, :key_id, :payload, :payload_hash, :signature, :valid_from, :valid_until, :published_at, :revoked_at])
-    |> validate_required([:event_id, :version, :key_id, :payload, :payload_hash, :signature, :valid_from, :valid_until])
+    |> cast(attrs, [
+      :event_id,
+      :version,
+      :key_id,
+      :payload,
+      :payload_hash,
+      :signature,
+      :valid_from,
+      :valid_until,
+      :published_at,
+      :revoked_at
+    ])
+    |> validate_required([
+      :event_id,
+      :version,
+      :key_id,
+      :payload,
+      :payload_hash,
+      :signature,
+      :valid_from,
+      :valid_until
+    ])
     |> validate_number(:version, greater_than: 0)
     |> validate_length(:key_id, min: 1, max: 128)
     |> validate_length(:payload_hash, min: 64, max: 128)
-    |> validate_change(:signature, fn :signature, value -> if is_binary(value) and byte_size(value) > 0, do: [], else: [signature: "is required"] end)
+    |> validate_change(:signature, fn :signature, value ->
+      if is_binary(value) and byte_size(value) > 0, do: [], else: [signature: "is required"]
+    end)
     |> validate_window()
     |> assoc_constraint(:event)
     |> unique_constraint([:event_id, :version])
@@ -33,8 +55,10 @@ defmodule Dunda.Ticketing.EventManifest do
   defp validate_window(changeset) do
     from = get_field(changeset, :valid_from)
     until = get_field(changeset, :valid_until)
-    if match?(%DateTime{}, from) and match?(%DateTime{}, until) and DateTime.compare(until, from) != :gt,
-      do: add_error(changeset, :valid_until, "must be after valid_from"),
-      else: changeset
+
+    if match?(%DateTime{}, from) and match?(%DateTime{}, until) and
+         DateTime.compare(until, from) != :gt,
+       do: add_error(changeset, :valid_until, "must be after valid_from"),
+       else: changeset
   end
 end

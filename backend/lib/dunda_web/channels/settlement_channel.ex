@@ -2,7 +2,7 @@ defmodule DundaWeb.SettlementChannel do
   @moduledoc """
   Per-checkout settlement telemetry channel (QA FI-01).
 
-  Topic: `settlement:<transaction_id>`.
+  Topic: `settlement:<internal_payment_intent_id>`.
 
   On join the channel replies with the current ledger state so a client that
   connects late (or reconnects after a network blip) immediately re-syncs
@@ -13,11 +13,15 @@ defmodule DundaWeb.SettlementChannel do
   use Phoenix.Channel
 
   @impl true
-  def join("settlement:" <> transaction_id, _payload, socket) do
-    status =
-      if Dunda.Ledger.settled?(transaction_id), do: "success", else: "pending"
+  def join("settlement:" <> payment_intent_id, _payload, socket) do
+    case Dunda.Checkout.get_payment_intent_for_user(payment_intent_id, socket.assigns.user_id) do
+      nil ->
+        {:error, %{reason: "not_found"}}
 
-    {:ok, %{status: status}, assign(socket, :transaction_id, transaction_id)}
+      intent ->
+        {:ok, %{status: public_status(intent.state)},
+         assign(socket, :payment_intent_id, intent.id)}
+    end
   end
 
   @doc """
@@ -27,12 +31,29 @@ defmodule DundaWeb.SettlementChannel do
   `%{"ResultCode" => "0", "MpesaReceiptNumber" => "ABC123"}`.
   """
   @spec broadcast_settlement(String.t(), map()) :: :ok
-  def broadcast_settlement(transaction_id, result) when is_binary(transaction_id) do
-    status = if result["ResultCode"] == "0", do: "success", else: "failure"
+  def broadcast_settlement(reference, result) when is_binary(reference) do
+    case resolve_intent(reference) do
+      nil ->
+        :ok
 
-    DundaWeb.Endpoint.broadcast("settlement:#{transaction_id}", "settled", %{
-      status: status,
-      receipt: result["MpesaReceiptNumber"]
-    })
+      intent ->
+        DundaWeb.Endpoint.broadcast("settlement:#{intent.id}", "settled", %{
+          status: if(to_string(result["ResultCode"]) == "0", do: "success", else: "failure"),
+          receipt: result["MpesaReceiptNumber"]
+        })
+    end
   end
+
+  defp resolve_intent(reference) do
+    case Ecto.UUID.cast(reference) do
+      {:ok, id} -> Dunda.Repo.get(Dunda.Checkout.PaymentIntent, id)
+      :error -> Dunda.Repo.get_by(Dunda.Checkout.PaymentIntent, provider_checkout_id: reference)
+    end
+  end
+
+  defp public_status(state) when state in ["confirmed", "confirmed_late", "fulfilled"],
+    do: "success"
+
+  defp public_status(state) when state in ["failed", "refunded"], do: "failure"
+  defp public_status(_), do: "pending"
 end

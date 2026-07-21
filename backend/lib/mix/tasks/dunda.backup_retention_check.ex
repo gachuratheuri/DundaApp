@@ -1,5 +1,6 @@
 defmodule Mix.Tasks.Dunda.BackupRetentionCheck do
   use Mix.Task
+
   @shortdoc "Capture or verify that a backup/restore cycle did not lose statutory financial records"
 
   @moduledoc """
@@ -23,7 +24,9 @@ defmodule Mix.Tasks.Dunda.BackupRetentionCheck do
   @impl Mix.Task
   def run(args) do
     Mix.Task.run("app.start")
-    {opts, _, _} = OptionParser.parse(args, switches: [capture_baseline: :string, verify: :string])
+
+    {opts, _, _} =
+      OptionParser.parse(args, switches: [capture_baseline: :string, verify: :string])
 
     cond do
       opts[:capture_baseline] -> capture(opts[:capture_baseline])
@@ -50,12 +53,18 @@ defmodule Mix.Tasks.Dunda.BackupRetentionCheck do
       end)
 
     if failures == [] do
-      Mix.shell().info("PASS: no protected table count decreased. Baseline=#{inspect(baseline)} Current=#{inspect(current)}")
+      Mix.shell().info(
+        "PASS: no protected table count decreased. Baseline=#{inspect(baseline)} Current=#{inspect(current)}"
+      )
     else
-      Mix.shell().error("FAIL: protected table(s) lost rows: #{inspect(failures)}. Baseline=#{inspect(baseline)} Current=#{inspect(current)}")
+      Mix.shell().error(
+        "FAIL: protected table(s) lost rows: #{inspect(failures)}. Baseline=#{inspect(baseline)} Current=#{inspect(current)}"
+      )
+
       Mix.raise("backup retention check failed — statutory financial records were lost")
     end
   end
 
-  defp protected_keys, do: ~w(protected_ledger_entries protected_orders protected_tickets protected_audit_events)
+  defp protected_keys,
+    do: ~w(protected_ledger_entries protected_orders protected_tickets protected_audit_events)
 end

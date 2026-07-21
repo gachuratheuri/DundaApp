@@ -23,36 +23,41 @@ defmodule Dunda.Workers.InstagramFetchWorker do
     if Dunda.Containment.blocked?(:dynamic_scraping) do
       {:cancel, :phase_0_containment}
     else
-    case token() do
-      nil ->
-        Logger.info("InstagramFetchWorker: INSTAGRAM_GRAPH_TOKEN unset — skipping org #{org_id}")
-        {:cancel, :no_credentials}
+      case token() do
+        nil ->
+          Logger.info(
+            "InstagramFetchWorker: INSTAGRAM_GRAPH_TOKEN unset — skipping org #{org_id}"
+          )
 
-      token ->
-        url = "https://graph.facebook.com/#{@graph_version}/#{account_id}/media"
+          {:cancel, :no_credentials}
 
-        case Req.get(url,
-               params: [access_token: token, fields: "id,caption,timestamp,permalink"],
-               max_retries: 0,
-               receive_timeout: 15_000
-             ) do
-          {:ok, %{status: 200, body: body}} ->
-            case SchemaGuard.api_events("instagram", body) do
-              {:ok, data} ->
-                if data == [], do: SchemaGuard.report_empty("instagram", account_id)
-                data |> Enum.map(&to_event_shape/1) |> IngestWorker.enqueue("instagram", org_id)
-                :ok
-              {:schema_drift, reason} -> {:error, reason}
-            end
+        token ->
+          url = "https://graph.facebook.com/#{@graph_version}/#{account_id}/media"
 
-          {:ok, %{status: status}} ->
-            {:error, {:http_status, status}}
+          case Req.get(url,
+                 params: [access_token: token, fields: "id,caption,timestamp,permalink"],
+                 max_retries: 0,
+                 receive_timeout: 15_000
+               ) do
+            {:ok, %{status: 200, body: body}} ->
+              case SchemaGuard.api_events("instagram", body) do
+                {:ok, data} ->
+                  if data == [], do: SchemaGuard.report_empty("instagram", account_id)
+                  data |> Enum.map(&to_event_shape/1) |> IngestWorker.enqueue("instagram", org_id)
+                  :ok
 
-          {:error, reason} ->
-            Logger.warning("InstagramFetchWorker org #{org_id} failed: #{inspect(reason)}")
-            {:error, reason}
-        end
-    end
+                {:schema_drift, reason} ->
+                  {:error, reason}
+              end
+
+            {:ok, %{status: status}} ->
+              {:error, {:http_status, status}}
+
+            {:error, reason} ->
+              Logger.warning("InstagramFetchWorker org #{org_id} failed: #{inspect(reason)}")
+              {:error, reason}
+          end
+      end
     end
   end
 

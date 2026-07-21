@@ -18,7 +18,11 @@ defmodule Dunda.Logging.RedactorTest do
     end
 
     test "recurses into nested maps and lists" do
-      nested = %{"outer" => %{"otp" => "123456", "safe" => "value"}, "list" => [%{"token" => "abc"}]}
+      nested = %{
+        "outer" => %{"otp" => "123456", "safe" => "value"},
+        "list" => [%{"token" => "abc"}]
+      }
+
       redacted = Redactor.redact(nested)
       assert redacted["outer"]["otp"] == "[REDACTED]"
       assert redacted["outer"]["safe"] == "value"
@@ -51,7 +55,12 @@ defmodule Dunda.Logging.RedactorTest do
 
   describe "filter/2 (Erlang :logger primary filter)" do
     test "redacts sensitive metadata keys and leaves the rest of the log event intact" do
-      event = %{level: :info, msg: {:string, "hello"}, meta: %{otp: "654321", request_id: "req-1"}}
+      event = %{
+        level: :info,
+        msg: {:string, "hello"},
+        meta: %{otp: "654321", request_id: "req-1"}
+      }
+
       filtered = Redactor.filter(event, [])
 
       assert filtered.meta.otp == "[REDACTED]"

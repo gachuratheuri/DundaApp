@@ -32,9 +32,14 @@ defmodule DundaWeb.Organiser.ScraperLive do
     allowed? = Enum.any?(socket.assigns.organisations, &(to_string(&1.id) == to_string(id)))
 
     case {allowed?, Organisations.get_organisation(id)} do
-      {true, org} when not is_nil(org) -> {:noreply, socket |> assign(:notice, nil) |> select_record(org)}
-      {false, _} -> {:noreply, socket}
-      _ -> {:noreply, socket}
+      {true, org} when not is_nil(org) ->
+        {:noreply, socket |> assign(:notice, nil) |> select_record(org)}
+
+      {false, _} ->
+        {:noreply, socket}
+
+      _ ->
+        {:noreply, socket}
     end
   end
 
@@ -68,12 +73,25 @@ defmodule DundaWeb.Organiser.ScraperLive do
 
           {:noreply,
            socket
-           |> assign(:notice, "Saved “#{org.name}”. Dispatch triggered — sources refresh shortly.")
+           |> assign(
+             :notice,
+             "Saved “#{org.name}”. Dispatch triggered — sources refresh shortly."
+           )
            |> load_organisations()
            |> select_record(org)}
 
         {:error, changeset} ->
-          {:noreply, assign(socket, :form, to_form(changeset))}
+          case changeset do
+            %Ecto.Changeset{} ->
+              {:noreply, assign(socket, :form, to_form(changeset))}
+
+            :forbidden ->
+              {:noreply,
+               assign(socket, :notice, "You are not authorised to configure this organisation.")}
+
+            _ ->
+              {:noreply, assign(socket, :notice, "The organisation could not be saved.")}
+          end
       end
     end
   end
@@ -81,11 +99,18 @@ defmodule DundaWeb.Organiser.ScraperLive do
   defp save_record(%Organisation{id: nil}, params, user_id),
     do: Organisations.create_organisation_for_user(user_id, params)
 
-  defp save_record(%Organisation{} = org, params, _user_id),
-    do: Organisations.update_organisation(org, params)
+  defp save_record(%Organisation{} = org, params, user_id),
+    do: Organisations.update_organisation_for_user(user_id, org, params)
 
   defp load_organisations(socket) do
-    assign(socket, :organisations, Organisations.list_organisations_for_user(socket.assigns.current_organiser.id))
+    assign(
+      socket,
+      :organisations,
+      Organisations.list_organisations_for_user(
+        socket.assigns.current_organiser.id,
+        ~w(owner admin)
+      )
+    )
   end
 
   defp select_record(socket, %Organisation{} = org) do

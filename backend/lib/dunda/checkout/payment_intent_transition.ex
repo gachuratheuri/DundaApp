@@ -8,7 +8,7 @@ defmodule Dunda.Checkout.PaymentIntentTransition do
     field :actor_user_id, :integer
     field :reason, :string
     field :metadata, :map, default: %{}
-    belongs_to :payment_intent, Dunda.Checkout.PaymentIntent
+    belongs_to :payment_intent, Dunda.Checkout.PaymentIntent, type: :binary_id
     timestamps(updated_at: false)
   end
 end

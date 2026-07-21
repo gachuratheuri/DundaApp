@@ -57,7 +57,9 @@ defmodule Dunda.ReleaseApprovalsGovernanceTest do
     end
 
     test "true when reconciliation_diff_count is positive" do
-      assert ReleaseApprovals.rollback_threshold_breached?(%{{:gauge, :reconciliation_diff_count} => 1})
+      assert ReleaseApprovals.rollback_threshold_breached?(%{
+               {:gauge, :reconciliation_diff_count} => 1
+             })
     end
 
     test "true when dsr_requests_overdue is positive" do
@@ -65,7 +67,11 @@ defmodule Dunda.ReleaseApprovalsGovernanceTest do
     end
 
     test "false when gauges are present but zero" do
-      counters = %{{:gauge, :reconciliation_diff_count} => 0, {:gauge, :dsr_requests_overdue} => 0}
+      counters = %{
+        {:gauge, :reconciliation_diff_count} => 0,
+        {:gauge, :dsr_requests_overdue} => 0
+      }
+
       refute ReleaseApprovals.rollback_threshold_breached?(counters)
     end
   end

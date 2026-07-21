@@ -11,7 +11,13 @@ defmodule Dunda.LedgerPropertyTest do
 
   alias Dunda.Checkout.{Journal, JournalLine, JournalTransaction}
 
-  @accounts ["provider_clearing", "cash", "organiser_payable", "platform_fee_revenue", "refund_payable"]
+  @accounts [
+    "provider_clearing",
+    "cash",
+    "organiser_payable",
+    "platform_fee_revenue",
+    "refund_payable"
+  ]
 
   defp account_generator, do: StreamData.member_of(@accounts)
   defp amount_generator, do: StreamData.integer(1..1_000_000)
@@ -37,15 +43,24 @@ defmodule Dunda.LedgerPropertyTest do
           ) do
       reference = "prop-ledger-#{System.unique_integer([:positive])}"
 
-      debit_lines = debit_accounts |> Enum.zip(split(total, debit_count)) |> Enum.map(fn {acc, amt} -> {acc, :debit, amt} end)
-      credit_lines = credit_accounts |> Enum.zip(split(total, credit_count)) |> Enum.map(fn {acc, amt} -> {acc, :credit, amt} end)
+      debit_lines =
+        debit_accounts
+        |> Enum.zip(split(total, debit_count))
+        |> Enum.map(fn {acc, amt} -> {acc, :debit, amt} end)
+
+      credit_lines =
+        credit_accounts
+        |> Enum.zip(split(total, credit_count))
+        |> Enum.map(fn {acc, amt} -> {acc, :credit, amt} end)
 
       tx = Journal.post!(reference, "KES", debit_lines ++ credit_lines, %{})
 
       assert tx.total_debits_cents == total
       assert tx.total_credits_cents == total
 
-      lines = Repo.all(Ecto.Query.from(l in JournalLine, where: l.journal_transaction_id == ^tx.id))
+      lines =
+        Repo.all(Ecto.Query.from(l in JournalLine, where: l.journal_transaction_id == ^tx.id))
+
       assert Enum.sum(Enum.map(lines, & &1.debit_cents)) == total
       assert Enum.sum(Enum.map(lines, & &1.credit_cents)) == total
     end
@@ -63,7 +78,12 @@ defmodule Dunda.LedgerPropertyTest do
       reference = "prop-ledger-unbalanced-#{System.unique_integer([:positive])}"
 
       assert_raise ArgumentError, fn ->
-        Journal.post!(reference, "KES", [{debit_account, :debit, debit_amount}, {credit_account, :credit, credit_amount}], %{})
+        Journal.post!(
+          reference,
+          "KES",
+          [{debit_account, :debit, debit_amount}, {credit_account, :credit, credit_amount}],
+          %{}
+        )
       end
 
       refute Repo.get_by(JournalTransaction, reference: reference)

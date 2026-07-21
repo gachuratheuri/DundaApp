@@ -33,37 +33,37 @@ defmodule Dunda.Workers.MpesaFulfillmentWorker do
     if Dunda.Containment.blocked?(:checkout) do
       {:cancel, :phase_0_containment}
     else
-    transaction_id = args["transaction_id"]
-    pool_id = args["ticket_tier_id"]
-    user_id = args["user_id"]
-    quantity = args["quantity"]
+      transaction_id = args["transaction_id"]
+      pool_id = args["ticket_tier_id"]
+      user_id = args["user_id"]
+      quantity = args["quantity"]
 
-    # Verify the ledger is actually settled
-    if Ledger.settled?(transaction_id) do
-      with :ok <- Inventory.commit_escrow(pool_id, transaction_id),
-           {:ok, tier, event} <- resolve_pool(pool_id),
-           %Accounts.User{} = user <- Accounts.get_user(user_id) do
-        # Exactly-once: a retry (or a callback racing the dead-letter poll)
-        # finds the tickets already recorded against this transaction.
-        if Ticketing.fulfilled?(transaction_id) do
-          :ok
-        else
-          case Ticketing.issue_tickets(nil, event, user, quantity,
-                 tier: tier,
-                 transaction_id: transaction_id
-               ) do
-            {:ok, _tickets} -> :ok
-            {:error, reason} -> {:error, reason}
+      # Verify the ledger is actually settled
+      if Ledger.settled?(transaction_id) do
+        with :ok <- Inventory.commit_escrow(pool_id, transaction_id),
+             {:ok, tier, event} <- resolve_pool(pool_id),
+             %Accounts.User{} = user <- Accounts.get_user(user_id) do
+          # Exactly-once: a retry (or a callback racing the dead-letter poll)
+          # finds the tickets already recorded against this transaction.
+          if Ticketing.fulfilled?(transaction_id) do
+            :ok
+          else
+            case Ticketing.issue_tickets(nil, event, user, quantity,
+                   tier: tier,
+                   transaction_id: transaction_id
+                 ) do
+              {:ok, _tickets} -> :ok
+              {:error, reason} -> {:error, reason}
+            end
           end
+        else
+          nil -> {:error, :invalid_event_or_user}
+          {:error, reason} -> {:error, reason}
         end
       else
-        nil -> {:error, :invalid_event_or_user}
-        {:error, reason} -> {:error, reason}
+        # If the ledger isn't settled yet, the worker will fail and retry later
+        {:error, :ledger_not_settled}
       end
-    else
-      # If the ledger isn't settled yet, the worker will fail and retry later
-      {:error, :ledger_not_settled}
-    end
     end
   end
 

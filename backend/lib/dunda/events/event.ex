@@ -53,12 +53,38 @@ defmodule Dunda.Events.Event do
   def changeset(event, attrs) do
     event
     |> cast(attrs, [
-      :name, :venue, :starts_at, :ends_at, :price_cents, :capacity, :organisation_id,
-      :description, :cover_image_url, :category, :status, :city, :latitude, :longitude,
-      :slug, :currency, :age_restriction, :published_at, :source_url, :source_last_seen_at,
+      :name,
+      :venue,
+      :starts_at,
+      :ends_at,
+      :price_cents,
+      :capacity,
+      :organisation_id,
+      :description,
+      :cover_image_url,
+      :category,
+      :status,
+      :city,
+      :latitude,
+      :longitude,
+      :slug,
+      :currency,
+      :age_restriction,
+      :published_at,
+      :source_url,
+      :source_last_seen_at,
       :source_payload_hash
     ])
-    |> validate_required([:name, :venue, :starts_at, :price_cents, :capacity, :status, :city, :currency])
+    |> validate_required([
+      :name,
+      :venue,
+      :starts_at,
+      :price_cents,
+      :capacity,
+      :status,
+      :city,
+      :currency
+    ])
     |> validate_number(:price_cents, greater_than_or_equal_to: 0)
     |> validate_number(:capacity, greater_than: 0)
     |> validate_inclusion(:status, ["draft", "published", "cancelled", "completed"])
@@ -72,9 +98,25 @@ defmodule Dunda.Events.Event do
   def ingest_changeset(event, attrs) do
     event
     |> cast(attrs, [
-      :name, :venue, :starts_at, :price_cents, :capacity, :source, :external_id, :organisation_id,
-      :description, :cover_image_url, :category, :status, :city, :latitude, :longitude, :slug,
-      :source_url, :source_last_seen_at, :source_payload_hash
+      :name,
+      :venue,
+      :starts_at,
+      :price_cents,
+      :capacity,
+      :source,
+      :external_id,
+      :organisation_id,
+      :description,
+      :cover_image_url,
+      :category,
+      :status,
+      :city,
+      :latitude,
+      :longitude,
+      :slug,
+      :source_url,
+      :source_last_seen_at,
+      :source_payload_hash
     ])
     |> validate_required([:name, :venue, :starts_at, :capacity, :source, :external_id])
     |> validate_number(:price_cents, greater_than_or_equal_to: 0)

@@ -15,10 +15,30 @@ defmodule Dunda.Checkout.OutboxEvent do
     field :last_error, :string
     timestamps()
   end
+
   def changeset(event, attrs) do
     event
-    |> cast(attrs, [:event_key, :event_type, :aggregate_type, :aggregate_id, :payload, :status, :attempts, :available_at, :published_at, :last_error])
-    |> validate_required([:event_key, :event_type, :aggregate_type, :aggregate_id, :payload, :status, :available_at])
+    |> cast(attrs, [
+      :event_key,
+      :event_type,
+      :aggregate_type,
+      :aggregate_id,
+      :payload,
+      :status,
+      :attempts,
+      :available_at,
+      :published_at,
+      :last_error
+    ])
+    |> validate_required([
+      :event_key,
+      :event_type,
+      :aggregate_type,
+      :aggregate_id,
+      :payload,
+      :status,
+      :available_at
+    ])
     |> validate_inclusion(:status, ~w(pending processing published failed))
     |> validate_number(:attempts, greater_than_or_equal_to: 0)
     |> unique_constraint(:event_key)

@@ -2,6 +2,7 @@ defmodule Dunda.Checkout.JournalTransaction do
   use Ecto.Schema
   import Ecto.Changeset
   @primary_key {:id, :binary_id, autogenerate: true}
+  @type t :: %__MODULE__{}
   schema "journal_transactions" do
     field :reference, :string
     field :currency, :string
@@ -11,6 +12,7 @@ defmodule Dunda.Checkout.JournalTransaction do
     has_many :lines, Dunda.Checkout.JournalLine
     timestamps(updated_at: false)
   end
+
   def changeset(tx, attrs) do
     tx
     |> cast(attrs, [:reference, :currency, :total_debits_cents, :total_credits_cents, :metadata])

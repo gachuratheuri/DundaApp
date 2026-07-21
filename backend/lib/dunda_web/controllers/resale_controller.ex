@@ -27,7 +27,10 @@ defmodule DundaWeb.ResaleController do
   end
 
   def create(conn, _params),
-    do: conn |> put_status(:unprocessable_entity) |> json(%{error: %{code: "listing_parameters_required"}})
+    do:
+      conn
+      |> put_status(:unprocessable_entity)
+      |> json(%{error: %{code: "listing_parameters_required"}})
 
   defp create_listing(conn, ticket, user_id, price) do
     case Market.list_ticket(ticket, user_id, price) do
@@ -42,33 +45,18 @@ defmodule DundaWeb.ResaleController do
     end
   end
 
-  @doc """
-  POST /api/resale/listings/:id/buy
-  Purchases an active listing.
-  """
-  def buy(conn, %{"id" => id}) do
-    user = conn.assigns.current_user
-    listing = Market.get_active_listing!(id)
-
-    case Market.execute_purchase(listing, user.id) do
-      {:ok, sold_listing} ->
-        render(conn, :show, listing: sold_listing)
-
-      {:error, _reason} ->
-        conn
-        |> put_status(:unprocessable_entity)
-        |> put_view(json: DundaWeb.ErrorJSON)
-        |> render(:"422", message: "Purchase failed")
-    end
-  end
-
   @doc "Creates a durable resale payment intent; no ticket transfer occurs here."
   def intent(conn, %{"id" => listing_id, "idempotency_key" => key} = params) do
     user = conn.assigns.current_user
 
-    with {:ok, order} <- Market.create_resale_payment_intent(listing_id, user.id, key, params["phone"]),
+    with {:ok, order} <-
+           Market.create_resale_payment_intent(listing_id, user.id, key, params["phone"]),
          {:ok, submitted} <- Dunda.Billing.submit_order_intent(order) do
-      json(conn, %{payment_intent_id: submitted.id, status: submitted.status, redirect_url: submitted.redirect_url})
+      json(conn, %{
+        payment_intent_id: submitted.id,
+        status: submitted.status,
+        redirect_url: submitted.redirect_url
+      })
     else
       {:error, :phase_0_containment} ->
         conn |> put_status(:service_unavailable) |> json(%{error: %{code: "phase_0_containment"}})
@@ -79,5 +67,8 @@ defmodule DundaWeb.ResaleController do
   end
 
   def intent(conn, _params),
-    do: conn |> put_status(:unprocessable_entity) |> json(%{error: %{code: "idempotency_key_required"}})
+    do:
+      conn
+      |> put_status(:unprocessable_entity)
+      |> json(%{error: %{code: "idempotency_key_required"}})
 end

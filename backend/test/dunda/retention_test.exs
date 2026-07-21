@@ -42,16 +42,25 @@ defmodule Dunda.RetentionTest do
   end
 
   defp insert_old_read_notification!(user) do
-    old = NaiveDateTime.utc_now() |> NaiveDateTime.add(-400, :day) |> NaiveDateTime.truncate(:second)
+    old =
+      NaiveDateTime.utc_now() |> NaiveDateTime.add(-400, :day) |> NaiveDateTime.truncate(:second)
 
     {:ok, notification} =
       %Notification{}
-      |> Notification.changeset(%{user_id: user.id, type: "test", title: "old", body: "old", read_at: DateTime.utc_now()})
+      |> Notification.changeset(%{
+        user_id: user.id,
+        type: "test",
+        title: "old",
+        body: "old",
+        read_at: DateTime.utc_now()
+      })
       |> Repo.insert()
 
     # Backdate inserted_at directly — the changeset always stamps "now".
     {1, _} =
-      Repo.update_all(from(n in Notification, where: n.id == ^notification.id), set: [inserted_at: old])
+      Repo.update_all(from(n in Notification, where: n.id == ^notification.id),
+        set: [inserted_at: old]
+      )
 
     notification
   end

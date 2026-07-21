@@ -23,7 +23,9 @@ defmodule Mix.Tasks.Dunda.Phase3Retention do
         Mix.raise("refusing destructive execution; set DUNDA_RETENTION_CONFIRM=#{@confirmation}")
       end
     else
-      Mix.shell().info("dry_run=true; pass --execute plus the explicit confirmation to delete eligible notifications")
+      Mix.shell().info(
+        "dry_run=true; pass --execute plus the explicit confirmation to delete eligible notifications"
+      )
     end
   end
 end

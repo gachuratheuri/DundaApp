@@ -7,10 +7,10 @@ isolation, M-Pesa settlement, and PII encryption.
 
 | Concern | Mechanism |
 |---|---|
-| Inventory isolation | One `InventoryPoolServer` GenServer per ticket tier, named via `Horde.Registry` (CRDT-backed, cluster-wide) |
-| Oversell safety | Atomic Redis Lua script (`priv/lua/inventory_checkout.lua`) — check + decrement + escrow in one round trip |
-| Escrow expiry | Redis keyspace notifications (fast path) **plus** `EscrowReclaimer` Oban job (authoritative) |
-| Payments | `MpesaStateMachine` (`gen_state_machine`) with Daraja callback + dead-letter polling |
+| Inventory authority | PostgreSQL `inventory_pools` and `inventory_reservations`; guarded updates and row locks preserve capacity |
+| Redis role | Rebuildable remaining-count projection, rate limiting, and ephemeral coordination only |
+| Reservation expiry | Locked payment/reservation transition; uncertain provider outcomes are retained for reconciliation |
+| Payments | Unified quote/payment-intent state machine with provider adapters, durable events, and an outbox |
 | Daraja client | Behaviour (`Dunda.Payments.Daraja`) with `HTTP` (prod) and `Sandbox` (dev/test) adapters |
 | PII at rest | `cloak_ecto` AES-256-GCM + HMAC-SHA256 blind index for lookups |
 | Clustering | `libcluster` Kubernetes DNS strategy |
@@ -39,7 +39,6 @@ are rejected. Scraped provenance and run freshness are persisted in
 | `POST` | `/api/privacy/requests` | Authenticated data-subject request creation |
 | `GET` | `/api/events` | Published upcoming catalogue; supports bounded `limit`, opaque `after` cursor, `category`, and `city` filters |
 | `GET` | `/api/events/:id` | Single event |
-| `POST` | `/api/checkout` | Reserve inventory + initiate M-Pesa STK push |
 | `POST` | `/api/resale/listings/:id/intent` | Create an idempotent resale payment intent; transfer occurs only after authoritative completion |
 | `POST` | `/api/quotes` | Create a short-lived server-priced quote (containment-blocked until G3) |
 | `POST` | `/api/checkout` | Create an idempotent quote-bound payment intent (containment-blocked until G3) |
@@ -54,7 +53,7 @@ are rejected. Scraped provenance and run freshness are persisted in
 `POST /api/checkout` body:
 
 ```json
-{ "event_id": "1", "phone": "0712345678", "quantity": 2 }
+{ "quote_id": "2fb...", "phone": "0712345678" }
 ```
 
 Checkout requests must include a unique `Idempotency-Key` header (16–200

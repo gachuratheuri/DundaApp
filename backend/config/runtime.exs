@@ -15,20 +15,39 @@ if config_env() == :prod do
   config :dunda, :phase4_gate_enforced, true
   config :dunda, :step_up_secret, System.fetch_env!("STEP_UP_SECRET")
   config :dunda, :quote_signing_secret, System.fetch_env!("QUOTE_SIGNING_SECRET")
-  config :dunda, :checkout_provider, System.get_env("CHECKOUT_PROVIDER", "pesapal") |> String.to_atom()
-  config :dunda, :max_replica_lag_seconds, String.to_integer(System.get_env("MAX_REPLICA_LAG_SECONDS", "30"))
-  config :dunda, :scraper_require_allowlist, System.get_env("SCRAPER_REQUIRE_ALLOWLIST", "true") == "true"
-  config :dunda, :scraper_allowed_hosts, System.get_env("SCRAPER_ALLOWED_HOSTS", "") |> String.split(",", trim: true)
+
+  config :dunda,
+         :checkout_provider,
+         System.get_env("CHECKOUT_PROVIDER", "pesapal") |> String.to_atom()
+
+  config :dunda,
+         :max_replica_lag_seconds,
+         String.to_integer(System.get_env("MAX_REPLICA_LAG_SECONDS", "30"))
+
+  config :dunda,
+         :scraper_require_allowlist,
+         System.get_env("SCRAPER_REQUIRE_ALLOWLIST", "true") == "true"
+
+  config :dunda,
+         :scraper_allowed_hosts,
+         System.get_env("SCRAPER_ALLOWED_HOSTS", "") |> String.split(",", trim: true)
+
   config :dunda, :scanner_manifest_private_key, System.fetch_env!("SCANNER_MANIFEST_PRIVATE_KEY")
   config :dunda, :scanner_manifest_public_key, System.fetch_env!("SCANNER_MANIFEST_PUBLIC_KEY")
-  config :dunda, :scanner_manifest_key_id, System.get_env("SCANNER_MANIFEST_KEY_ID", "manifest-v1")
+
+  config :dunda,
+         :scanner_manifest_key_id,
+         System.get_env("SCANNER_MANIFEST_KEY_ID", "manifest-v1")
+
   config :dunda, :environment, "non-production"
   config :dunda, :google_client_id, System.get_env("GOOGLE_CLIENT_ID")
   config :dunda, :otp_secret, System.fetch_env!("OTP_HMAC_SECRET")
   config :dunda, :metrics_token, System.fetch_env!("METRICS_TOKEN")
+
   config :dunda, :webhook_secrets,
     daraja: System.fetch_env!("DARAJA_CALLBACK_SECRET"),
     pesapal: System.fetch_env!("PESAPAL_IPN_SECRET")
+
   redis_opts = [
     host: System.get_env("REDIS_HOST", "localhost"),
     port: String.to_integer(System.get_env("REDIS_PORT", "6379")),
@@ -48,12 +67,20 @@ if config_env() == :prod do
   config :dunda, :redis, redis_opts
   config :dunda, :redis_role, :projection
   config :kernel, inet_dist_listen_min: 9100, inet_dist_listen_max: 9100
-  config :dunda, :inventory_authority,
+
+  inventory_authority =
     case System.get_env("INVENTORY_AUTHORITY", "postgres") do
-      "postgres" -> :postgres
-      "redis_legacy" -> :redis_legacy
-      other -> raise "unsupported INVENTORY_AUTHORITY=#{other}; use postgres or explicitly gated redis_legacy"
+      "postgres" ->
+        :postgres
+
+      "redis_legacy" ->
+        :redis_legacy
+
+      other ->
+        raise "unsupported INVENTORY_AUTHORITY=#{other}; use postgres or explicitly gated redis_legacy"
     end
+
+  config :dunda, :inventory_authority, inventory_authority
 
   config :dunda, DundaWeb.Endpoint,
     server: true,
@@ -77,7 +104,8 @@ if config_env() == :prod do
   # `docs/phase_11_privacy_governance.md` § Key management. The default
   # adapter still reads environment variables; the seam lets a real KMS
   # adapter replace it with no call-site change.
-  vault_key_provider = Application.get_env(:dunda, :vault_key_provider, Dunda.Vault.KeyProvider.Env)
+  vault_key_provider =
+    Application.get_env(:dunda, :vault_key_provider, Dunda.Vault.KeyProvider.Env)
 
   encryption_key = Dunda.Vault.KeyProvider.fetch_key!(vault_key_provider, :encryption_key)
   blind_index_key = Dunda.Vault.KeyProvider.fetch_key!(vault_key_provider, :blind_index_key)
@@ -90,7 +118,8 @@ if config_env() == :prod do
   # recomputes every hash directly from the independently-encrypted
   # plaintext (`User.phone_msisdn`), so rotating `BLIND_INDEX_KEY` never
   # needs the old secret at all — see `Dunda.Vault.Rotation` moduledoc.
-  encryption_key_previous = Dunda.Vault.KeyProvider.fetch_key_optional(vault_key_provider, :encryption_key_previous)
+  encryption_key_previous =
+    Dunda.Vault.KeyProvider.fetch_key_optional(vault_key_provider, :encryption_key_previous)
 
   # The cipher tag encodes an explicit generation number, NOT "is a rotation
   # in progress" — the tag must always match what is actually persisted, so
@@ -102,9 +131,17 @@ if config_env() == :prod do
   key_version = String.to_integer(System.get_env("ENCRYPTION_KEY_VERSION", "1"))
 
   vault_ciphers =
-    [default: {Cloak.Ciphers.AES.GCM, tag: "AES.GCM.V#{key_version}", key: encryption_key, iv_length: 12}] ++
+    [
+      default:
+        {Cloak.Ciphers.AES.GCM,
+         tag: "AES.GCM.V#{key_version}", key: encryption_key, iv_length: 12}
+    ] ++
       if encryption_key_previous do
-        [previous: {Cloak.Ciphers.AES.GCM, tag: "AES.GCM.V#{key_version - 1}", key: encryption_key_previous, iv_length: 12}]
+        [
+          previous:
+            {Cloak.Ciphers.AES.GCM,
+             tag: "AES.GCM.V#{key_version - 1}", key: encryption_key_previous, iv_length: 12}
+        ]
       else
         []
       end

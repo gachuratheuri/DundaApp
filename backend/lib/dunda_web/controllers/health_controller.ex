@@ -56,11 +56,16 @@ defmodule DundaWeb.HealthController do
     sql = "SELECT EXTRACT(EPOCH FROM (clock_timestamp() - pg_last_xact_replay_timestamp()))"
 
     case Ecto.Adapters.SQL.query(Dunda.ReadRepo, sql, [], timeout: 1_000) do
-      {:ok, %{rows: [[nil]]}} -> "ok"
-      {:ok, %{rows: [[lag]]}} when is_number(lag) ->
-        if lag <= Application.get_env(:dunda, :max_replica_lag_seconds, 30), do: "ok", else: "lagging"
+      {:ok, %{rows: [[nil]]}} ->
+        "ok"
 
-      _ -> "error"
+      {:ok, %{rows: [[lag]]}} when is_number(lag) ->
+        if lag <= Application.get_env(:dunda, :max_replica_lag_seconds, 30),
+          do: "ok",
+          else: "lagging"
+
+      _ ->
+        "error"
     end
   rescue
     _ -> "error"

@@ -13,6 +13,7 @@ defmodule Dunda.Checkout.InventoryPool do
     has_many :reservations, Dunda.Checkout.InventoryReservation
     timestamps()
   end
+
   def changeset(pool, attrs) do
     pool
     |> cast(attrs, [:pool_key, :capacity, :reserved, :sold, :version, :event_id, :ticket_tier_id])
@@ -31,6 +32,7 @@ defmodule Dunda.Checkout.InventoryPool do
     capacity = get_field(changeset, :capacity)
     reserved = get_field(changeset, :reserved)
     sold = get_field(changeset, :sold)
+
     if Enum.all?([capacity, reserved, sold], &is_integer/1) and reserved + sold > capacity,
       do: add_error(changeset, :reserved, "reserved plus sold cannot exceed capacity"),
       else: changeset

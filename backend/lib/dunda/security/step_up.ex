@@ -4,7 +4,15 @@ defmodule Dunda.Security.StepUp do
   @spec issue(integer(), String.t(), pos_integer()) :: String.t()
   def issue(user_id, purpose, ttl_seconds \\ 300) do
     issued_at = System.system_time(:second)
-    payload = Jason.encode!(%{"user_id" => user_id, "purpose" => purpose, "iat" => issued_at, "exp" => issued_at + ttl_seconds})
+
+    payload =
+      Jason.encode!(%{
+        "user_id" => user_id,
+        "purpose" => purpose,
+        "iat" => issued_at,
+        "exp" => issued_at + ttl_seconds
+      })
+
     encoded = Base.url_encode64(payload, padding: false)
     encoded <> "." <> sign(encoded)
   end
@@ -30,7 +38,9 @@ defmodule Dunda.Security.StepUp do
     :crypto.mac(:hmac, :sha256, secret(), encoded) |> Base.url_encode64(padding: false)
   end
 
-  defp secure_equal(left, right) when byte_size(left) == byte_size(right), do: Plug.Crypto.secure_compare(left, right)
+  defp secure_equal(left, right) when byte_size(left) == byte_size(right),
+    do: Plug.Crypto.secure_compare(left, right)
+
   defp secure_equal(_, _), do: false
 
   defp secret do

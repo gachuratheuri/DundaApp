@@ -63,7 +63,12 @@ defmodule Dunda.Payments.DuplicateCallbackTest do
 
     {:ok, {:submit, intent, attempt}} = Checkout.prepare_provider_submission(intent.id)
     checkout_id = "prop-checkout-#{unique()}"
-    {:ok, _} = Checkout.complete_provider_submission(intent.id, attempt.id, %{result: :ok, provider_checkout_id: checkout_id})
+
+    {:ok, _} =
+      Checkout.complete_provider_submission(intent.id, attempt.id, %{
+        result: :ok,
+        provider_checkout_id: checkout_id
+      })
 
     {intent.id, checkout_id}
   end
@@ -84,7 +89,10 @@ defmodule Dunda.Payments.DuplicateCallbackTest do
 
     results =
       1..8
-      |> Task.async_stream(fn _ -> Checkout.confirm_payment(intent_id, attrs) end, max_concurrency: 8, timeout: 10_000)
+      |> Task.async_stream(fn _ -> Checkout.confirm_payment(intent_id, attrs) end,
+        max_concurrency: 8,
+        timeout: 10_000
+      )
       |> Enum.map(fn {:ok, result} -> result end)
 
     assert Enum.all?(results, &match?({:ok, _}, &1))

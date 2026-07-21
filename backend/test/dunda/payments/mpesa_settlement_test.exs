@@ -51,9 +51,7 @@ defmodule Dunda.Payments.MpesaSettlementTest do
     on_exit(fn ->
       Dunda.Repo.delete_all(from t in Ticketing.Ticket, where: t.event_id == ^event.id)
 
-      Dunda.Repo.delete_all(
-        from e in Dunda.Ledger.Entry, where: like(e.transaction_id, "txn_%")
-      )
+      Dunda.Repo.delete_all(from e in Dunda.Ledger.Entry, where: like(e.transaction_id, "txn_%"))
 
       Dunda.Repo.delete_all(from e in Events.Event, where: e.id == ^event.id)
       Dunda.Repo.delete_all(from u in Accounts.User, where: u.id == ^user.id)

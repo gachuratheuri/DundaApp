@@ -11,12 +11,23 @@ defmodule Dunda.Checkout.ProviderEvent do
     field :retry_count, :integer, default: 0
     field :received_at, :utc_datetime
     field :processed_at, :utc_datetime
-    belongs_to :payment_intent, Dunda.Checkout.PaymentIntent
+    belongs_to :payment_intent, Dunda.Checkout.PaymentIntent, type: :binary_id
     timestamps(updated_at: false)
   end
+
   def changeset(event, attrs) do
     event
-    |> cast(attrs, [:provider, :provider_event_id, :provider_checkout_id, :payload, :outcome, :retry_count, :received_at, :processed_at, :payment_intent_id])
+    |> cast(attrs, [
+      :provider,
+      :provider_event_id,
+      :provider_checkout_id,
+      :payload,
+      :outcome,
+      :retry_count,
+      :received_at,
+      :processed_at,
+      :payment_intent_id
+    ])
     |> validate_required([:provider, :provider_event_id, :payload, :received_at])
     |> validate_number(:retry_count, greater_than_or_equal_to: 0)
     |> assoc_constraint(:payment_intent)

@@ -18,54 +18,67 @@ defmodule Dunda.Workers.MpesaPoller do
       {:cancel, :phase_0_containment}
     else
       keys = scan_keys("0", [])
-    now = System.system_time(:second)
+      now = System.system_time(:second)
 
-    Enum.each(keys, fn key ->
-      case Redix.command(:redix, ["GET", key]) do
-        {:ok, json} when is_binary(json) ->
-          case Jason.decode(json) do
-            {:ok, tx} ->
-              created_at = Map.get(tx, "created_at", 0)
-              if now - created_at >= @poll_grace_seconds do
-                "checkout_request:" <> checkout_request_id = key
-                poll_transaction(checkout_request_id, tx)
-              end
+      Enum.each(keys, fn key ->
+        case Redix.command(:redix, ["GET", key]) do
+          {:ok, json} when is_binary(json) ->
+            case Jason.decode(json) do
+              {:ok, tx} ->
+                created_at = Map.get(tx, "created_at", 0)
 
-            _ ->
-              Redix.command(:redix, ["DEL", key])
-          end
+                if now - created_at >= @poll_grace_seconds do
+                  "checkout_request:" <> checkout_request_id = key
+                  poll_transaction(checkout_request_id, tx)
+                end
 
-        _ ->
-          :noop
-      end
-    end)
+              _ ->
+                Redix.command(:redix, ["DEL", key])
+            end
+
+          _ ->
+            :noop
+        end
+      end)
 
       :ok
     end
   end
 
   defp poll_transaction(checkout_request_id, tx) do
-    Logger.info("[MpesaPoller] Polling status for transaction #{tx["transaction_id"]} / CRI #{checkout_request_id}")
+    Logger.info(
+      "[MpesaPoller] Polling status for transaction #{tx["transaction_id"]} / CRI #{checkout_request_id}"
+    )
 
     case Daraja.query_status(checkout_request_id) do
       {:ok, %{"ResultCode" => "0"} = result} ->
         receipt = result["MpesaReceiptNumber"]
         # Log a correlation-safe fingerprint, never the raw receipt number
         # (Phase 11 log-redaction hardening).
-        receipt_fingerprint = :crypto.hash(:sha256, receipt || "") |> Base.encode16(case: :lower) |> String.slice(0, 12)
-        Logger.info("[MpesaPoller] Transaction #{tx["transaction_id"]} settled successfully via poller. Receipt fingerprint: #{receipt_fingerprint}")
+        receipt_fingerprint =
+          :crypto.hash(:sha256, receipt || "")
+          |> Base.encode16(case: :lower)
+          |> String.slice(0, 12)
+
+        Logger.info(
+          "[MpesaPoller] Transaction #{tx["transaction_id"]} settled successfully via poller. Receipt fingerprint: #{receipt_fingerprint}"
+        )
 
         Ledger.settle(tx["transaction_id"], receipt)
+
         Dunda.Workers.MpesaFulfillmentWorker.enqueue(
           tx["transaction_id"],
           tx["ticket_tier_id"],
           tx["user_id"],
           tx["quantity"]
         )
+
         Redix.command(:redix, ["DEL", "checkout_request:#{checkout_request_id}"])
 
       {:ok, %{"ResultCode" => code}} when code != "0" ->
-        Logger.warning("[MpesaPoller] Transaction #{tx["transaction_id"]} failed with Safaricom code: #{code}")
+        Logger.warning(
+          "[MpesaPoller] Transaction #{tx["transaction_id"]} failed with Safaricom code: #{code}"
+        )
 
         Inventory.release_escrow(tx["ticket_tier_id"], tx["transaction_id"])
         Redix.command(:redix, ["DEL", "checkout_request:#{checkout_request_id}"])
@@ -75,7 +88,10 @@ defmodule Dunda.Workers.MpesaPoller do
         :noop
 
       error ->
-        Logger.error("[MpesaPoller] Daraja API query failed for #{tx["transaction_id"]}: #{inspect(error)}")
+        Logger.error(
+          "[MpesaPoller] Daraja API query failed for #{tx["transaction_id"]}: #{inspect(error)}"
+        )
+
         :noop
     end
   end
@@ -84,11 +100,13 @@ defmodule Dunda.Workers.MpesaPoller do
     case Redix.command(:redix, ["SCAN", cursor, "MATCH", "checkout_request:*", "COUNT", "100"]) do
       {:ok, [next_cursor, keys]} ->
         new_acc = acc ++ keys
+
         if next_cursor == "0" do
           new_acc
         else
           scan_keys(next_cursor, new_acc)
         end
+
       _ ->
         acc
     end

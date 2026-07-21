@@ -19,6 +19,7 @@ defmodule DundaWeb.Organiser.DashboardLive do
   # Format currency in KSh
   defp format_currency(cents) do
     shillings = div(cents, 100)
+
     formatted =
       shillings
       |> Integer.to_charlist()
@@ -26,7 +27,7 @@ defmodule DundaWeb.Organiser.DashboardLive do
       |> Enum.chunk_every(3)
       |> Enum.join(",")
       |> String.reverse()
-    
+
     "KSh " <> formatted
   end
 
@@ -35,7 +36,7 @@ defmodule DundaWeb.Organiser.DashboardLive do
     |> DateTime.shift_zone!("Africa/Nairobi")
     |> Calendar.strftime("%I:%M:%S %p")
   rescue
-    _ -> 
+    _ ->
       # Fallback if timezone data is missing
       Calendar.strftime(datetime, "%I:%M:%S %p")
   end

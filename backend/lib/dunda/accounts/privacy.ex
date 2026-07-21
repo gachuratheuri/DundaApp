@@ -17,7 +17,8 @@ defmodule Dunda.Accounts.Privacy do
   @spec create_request(integer(), String.t(), String.t() | nil) ::
           {:ok, DataSubjectRequest.t()} | {:error, Ecto.Changeset.t() | atom()}
   def create_request(user_id, request_type, subject_email \\ nil)
-      when request_type in @request_types do
+
+  def create_request(user_id, request_type, subject_email) when request_type in @request_types do
     due_by = DateTime.utc_now() |> DateTime.add(30, :day) |> DateTime.truncate(:second)
 
     %DataSubjectRequest{}
@@ -31,10 +32,19 @@ defmodule Dunda.Accounts.Privacy do
     |> Repo.insert()
     |> case do
       {:ok, request} = result ->
-        _ = Dunda.Audit.record(%{actor_user_id: user_id, action: "privacy.request_created", resource_type: "data_subject_request", resource_id: request.id, metadata: %{request_type: request_type}})
+        _ =
+          Dunda.Audit.record(%{
+            actor_user_id: user_id,
+            action: "privacy.request_created",
+            resource_type: "data_subject_request",
+            resource_id: request.id,
+            metadata: %{request_type: request_type}
+          })
+
         result
 
-      error -> error
+      error ->
+        error
     end
   end
 
@@ -50,15 +60,34 @@ defmodule Dunda.Accounts.Privacy do
       user ->
         {:ok,
          %{
-           user: %{id: user.id, email: user.email, name: user.name, auth_provider: user.auth_provider},
+           user: %{
+             id: user.id,
+             email: user.email,
+             name: user.name,
+             auth_provider: user.auth_provider
+           },
            tickets:
-             Repo.all(from t in Dunda.Ticketing.Ticket,
-               where: t.user_id == ^user_id,
-               select: %{id: t.id, event_id: t.event_id, status: t.status, inserted_at: t.inserted_at}),
+             Repo.all(
+               from t in Dunda.Ticketing.Ticket,
+                 where: t.user_id == ^user_id,
+                 select: %{
+                   id: t.id,
+                   event_id: t.event_id,
+                   status: t.status,
+                   inserted_at: t.inserted_at
+                 }
+             ),
            requests:
-             Repo.all(from r in DataSubjectRequest,
-               where: r.user_id == ^user_id,
-               select: %{id: r.id, request_type: r.request_type, status: r.status, due_by: r.due_by})
+             Repo.all(
+               from r in DataSubjectRequest,
+                 where: r.user_id == ^user_id,
+                 select: %{
+                   id: r.id,
+                   request_type: r.request_type,
+                   status: r.status,
+                   due_by: r.due_by
+                 }
+             )
          }}
     end
   end
@@ -73,7 +102,8 @@ defmodule Dunda.Accounts.Privacy do
   `"rectification"`; completes the request on success.
   """
   @spec process_rectification(integer(), Ecto.UUID.t(), map()) ::
-          {:ok, DataSubjectRequest.t()} | {:error, :not_found | :wrong_request_type | Ecto.Changeset.t()}
+          {:ok, DataSubjectRequest.t()}
+          | {:error, :not_found | :wrong_request_type | :invalid_transition | Ecto.Changeset.t()}
   def process_rectification(user_id, request_id, attrs) do
     with {:ok, request} <- fetch_own_request(user_id, request_id, "rectification"),
          %User{} = user <- Repo.get(User, user_id) || {:error, :not_found},
@@ -92,7 +122,8 @@ defmodule Dunda.Accounts.Privacy do
   `user_id` and be of type `"objection"`.
   """
   @spec record_objection(integer(), Ecto.UUID.t(), String.t() | nil) ::
-          {:ok, DataSubjectRequest.t()} | {:error, :not_found | :wrong_request_type | Ecto.Changeset.t()}
+          {:ok, DataSubjectRequest.t()}
+          | {:error, :not_found | :wrong_request_type | :invalid_transition | Ecto.Changeset.t()}
   def record_objection(user_id, request_id, scope \\ nil) do
     with {:ok, request} <- fetch_own_request(user_id, request_id, "objection") do
       transition_status(request, "in_progress", %{notes: objection_note(scope)})
@@ -123,7 +154,15 @@ defmodule Dunda.Accounts.Privacy do
 
       case request |> DataSubjectRequest.changeset(changes) |> Repo.update() do
         {:ok, updated} ->
-          _ = Dunda.Audit.record(%{actor_user_id: request.user_id, action: "privacy.request_status_changed", resource_type: "data_subject_request", resource_id: request.id, metadata: %{from: request.status, to: new_status}})
+          _ =
+            Dunda.Audit.record(%{
+              actor_user_id: request.user_id,
+              action: "privacy.request_status_changed",
+              resource_type: "data_subject_request",
+              resource_id: request.id,
+              metadata: %{from: request.status, to: new_status}
+            })
+
           {:ok, updated}
 
         {:error, changeset} ->
@@ -137,7 +176,15 @@ defmodule Dunda.Accounts.Privacy do
   defp complete_request(request, metadata) do
     case transition_status(request, "completed", %{}) do
       {:ok, updated} ->
-        _ = Dunda.Audit.record(%{actor_user_id: request.user_id, action: "privacy.rectification_applied", resource_type: "data_subject_request", resource_id: request.id, metadata: metadata})
+        _ =
+          Dunda.Audit.record(%{
+            actor_user_id: request.user_id,
+            action: "privacy.rectification_applied",
+            resource_type: "data_subject_request",
+            resource_id: request.id,
+            metadata: metadata
+          })
+
         {:ok, updated}
 
       error ->
@@ -158,8 +205,11 @@ defmodule Dunda.Accounts.Privacy do
 
   defp maybe_put_completed_at(changes, _status), do: changes
 
-  defp objection_note(nil), do: "Objection to processing recorded; scope not specified by subject."
-  defp objection_note(scope), do: "Objection to processing recorded. Scope: #{String.slice(to_string(scope), 0, 500)}"
+  defp objection_note(nil),
+    do: "Objection to processing recorded; scope not specified by subject."
+
+  defp objection_note(scope),
+    do: "Objection to processing recorded. Scope: #{String.slice(to_string(scope), 0, 500)}"
 
   @doc "Pseudonymises direct account data while retaining statutory evidence."
   @spec anonymise_user(integer()) :: {:ok, User.t()} | {:error, :user_not_found | term()}
@@ -188,9 +238,19 @@ defmodule Dunda.Accounts.Privacy do
            })
            |> Repo.update() do
         {:ok, anonymised} ->
-          _ = Dunda.Audit.record(%{actor_user_id: user_id, action: "privacy.user_anonymised", resource_type: "user", resource_id: to_string(user_id), metadata: %{preserved_financial_evidence: true}})
+          _ =
+            Dunda.Audit.record(%{
+              actor_user_id: user_id,
+              action: "privacy.user_anonymised",
+              resource_type: "user",
+              resource_id: to_string(user_id),
+              metadata: %{preserved_financial_evidence: true}
+            })
+
           anonymised
-        {:error, changeset} -> Repo.rollback(changeset)
+
+        {:error, changeset} ->
+          Repo.rollback(changeset)
       end
     end)
     |> case do

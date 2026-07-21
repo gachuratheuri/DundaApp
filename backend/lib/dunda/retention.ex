@@ -1,5 +1,5 @@
 defmodule Dunda.Retention do
-  @moduledoc """Conservative data-retention policy; statutory financial evidence is never purged."""
+  @moduledoc "Conservative data-retention policy; statutory financial evidence is never purged."
 
   import Ecto.Query, only: [from: 2]
 
@@ -42,7 +42,9 @@ defmodule Dunda.Retention do
           )
         )
 
-      _ = Dunda.Audit.record(%{action: "retention.notifications_deleted", metadata: %{count: count}})
+      _ =
+        Dunda.Audit.record(%{action: "retention.notifications_deleted", metadata: %{count: count}})
+
       {:ok, count}
     end
   end

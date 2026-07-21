@@ -42,8 +42,23 @@ defmodule Dunda.Phase6SettlementTest do
   end
 
   test "manual review can only be closed by an explicit provider result" do
-    payout = %PayoutBatch{status: "manual_review", organisation_id: 1, amount_cents: 100, currency: "KES", idempotency_key: "batch-key"}
-    refund = %Refund{status: "manual_review", order_id: 1, amount_cents: 100, currency: "KES", reason: "provider review", idempotency_key: "refund-key"}
+    payout = %PayoutBatch{
+      status: "manual_review",
+      organisation_id: 1,
+      amount_cents: 100,
+      currency: "KES",
+      idempotency_key: "batch-key"
+    }
+
+    refund = %Refund{
+      status: "manual_review",
+      order_id: 1,
+      amount_cents: 100,
+      currency: "KES",
+      reason: "provider review",
+      idempotency_key: "refund-key"
+    }
+
     assert PayoutBatch.changeset(payout, %{status: "paid"}).valid?
     assert Refund.changeset(refund, %{status: "failed"}).valid?
     assert Order.status_changeset(%Order{status: "manual_review"}, %{status: "refunded"}).valid?

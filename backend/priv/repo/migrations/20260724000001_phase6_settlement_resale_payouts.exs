@@ -65,7 +65,7 @@ defmodule Dunda.Repo.Migrations.Phase6SettlementResalePayouts do
 
     alter table(:orders) do
       add :kind, :string, null: false, default: "primary"
-      add :resale_listing_id, references(:resale_listings, on_delete: :nilify_all)
+      add :resale_listing_id, references(:resale_listings, type: :binary_id, on_delete: :nilify_all)
       add :refund_status, :string, null: false, default: "none"
       add :refunded_amount_cents, :integer, null: false, default: 0
       add :refunded_at, :utc_datetime
@@ -169,7 +169,7 @@ defmodule Dunda.Repo.Migrations.Phase6SettlementResalePayouts do
 
     create table(:payout_items, primary_key: false) do
       add :id, :binary_id, primary_key: true
-      add :payout_batch_id, references(:payout_batches, on_delete: :restrict), null: false
+      add :payout_batch_id, references(:payout_batches, type: :binary_id, on_delete: :restrict), null: false
       add :order_id, references(:orders, on_delete: :restrict), null: false
       add :amount_cents, :integer, null: false
       add :currency, :string, null: false, default: "KES"

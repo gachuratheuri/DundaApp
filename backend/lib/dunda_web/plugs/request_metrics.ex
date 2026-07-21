@@ -22,6 +22,9 @@ defmodule DundaWeb.Plugs.RequestMetrics do
     |> Enum.map(fn segment ->
       if Regex.match?(~r/^(\d+|[0-9a-fA-F-]{16,})$/, segment), do: ":id", else: segment
     end)
-    |> then(fn [] -> "/"; segments -> "/" <> Enum.join(segments, "/") end)
+    |> then(fn
+      [] -> "/"
+      segments -> "/" <> Enum.join(segments, "/")
+    end)
   end
 end
