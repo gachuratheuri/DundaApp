@@ -84,7 +84,7 @@ defmodule DundaWeb.Router do
 
   # Organiser Sessions
   scope "/portal", DundaWeb.Organiser do
-    pipe_through(:browser)
+    pipe_through([:browser, :auth_rate_limit])
 
     live("/login", LoginLive, :index)
     post("/login", SessionController, :create)

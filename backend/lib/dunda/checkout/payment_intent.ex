@@ -22,12 +22,12 @@ defmodule Dunda.Checkout.PaymentIntent do
     "provider_pending" =>
       ~w(provider_pending confirmed failed expired_pending_reconciliation confirmed_late manual_review refund_pending),
     "confirmed" => ~w(confirmed fulfilled refund_pending manual_review),
-    "fulfilled" => ~w(fulfilled refund_pending manual_review),
+    "fulfilled" => ~w(fulfilled refund_pending refunded manual_review),
     "failed" => ~w(failed manual_review),
     "expired_pending_reconciliation" =>
       ~w(expired_pending_reconciliation confirmed_late manual_review refund_pending),
     "confirmed_late" => ~w(confirmed_late fulfilled refund_pending manual_review),
-    "manual_review" => ~w(manual_review confirmed_late refund_pending),
+    "manual_review" => ~w(manual_review confirmed_late refund_pending refunded),
     "refund_pending" => ~w(refund_pending refunded manual_review),
     "refunded" => ~w(refunded)
   }

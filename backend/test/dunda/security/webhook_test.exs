@@ -61,4 +61,12 @@ defmodule Dunda.Security.WebhookTest do
 
     refute Webhook.valid?(conn_with_secret("anything"), :daraja)
   end
+
+  test "accepts secret or token supplied via query parameters for callbacks" do
+    conn_param = conn(:post, "/api/mpesa/b2c/result?secret=#{@daraja_secret}", %{"secret" => @daraja_secret})
+    assert Webhook.valid?(conn_param, :daraja)
+
+    conn_token = conn(:post, "/api/mpesa/b2c/result?token=#{@daraja_secret}", %{"token" => @daraja_secret})
+    assert Webhook.valid?(conn_token, :daraja)
+  end
 end

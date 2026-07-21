@@ -127,9 +127,22 @@ defmodule Dunda.Security.URL do
   end
 
   defp private_ip?({a, b, c, d}) do
+    cgnat = a == 100 and b >= 64 and b <= 127
+    benchmark = a == 198 and (b == 18 or b == 19)
+
     a == 0 or a == 10 or a == 127 or (a == 169 and b == 254) or
       (a == 172 and b in 16..31) or (a == 192 and b == 168) or
-      a >= 224 or {a, b, c, d} == {255, 255, 255, 255}
+      a >= 224 or {a, b, c, d} == {255, 255, 255, 255} or
+      cgnat or benchmark
+  end
+
+  defp private_ip?({0, 0, 0, 0, 0, 0xFFFF, g, h}) do
+    # IPv4-mapped IPv6 address (::ffff:w.x.y.z)
+    a = Bitwise.bsr(g, 8)
+    b = Bitwise.band(g, 0xFF)
+    c = Bitwise.bsr(h, 8)
+    d = Bitwise.band(h, 0xFF)
+    private_ip?({a, b, c, d})
   end
 
   defp private_ip?({a, b, c, d, e, f, g, h}) do

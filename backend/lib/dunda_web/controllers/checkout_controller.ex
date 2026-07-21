@@ -80,6 +80,26 @@ defmodule DundaWeb.CheckoutController do
   defp error(conn, :payment_intent_not_found),
     do: conn |> put_status(:not_found) |> json(%{error: %{code: "payment_intent_not_found"}})
 
-  defp error(conn, reason),
-    do: conn |> put_status(:unprocessable_entity) |> json(%{error: %{code: to_string(reason)}})
+  defp error(conn, %Ecto.Changeset{} = changeset) do
+    errors =
+      Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
+        Regex.replace(~r"%{(\w+)}", msg, fn _, key ->
+          to_string(Map.get(opts, String.to_existing_atom(key), key))
+        end)
+      end)
+
+    conn
+    |> put_status(:unprocessable_entity)
+    |> json(%{error: %{code: "validation_error", details: errors}})
+  end
+
+  defp error(conn, reason) do
+    code = format_error_code(reason)
+    conn |> put_status(:unprocessable_entity) |> json(%{error: %{code: code}})
+  end
+
+  defp format_error_code(reason) when is_atom(reason), do: to_string(reason)
+  defp format_error_code(reason) when is_binary(reason), do: reason
+  defp format_error_code({code, _detail}) when is_atom(code) or is_binary(code), do: to_string(code)
+  defp format_error_code(reason), do: inspect(reason)
 end

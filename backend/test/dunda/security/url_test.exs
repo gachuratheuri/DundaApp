@@ -33,4 +33,11 @@ defmodule Dunda.Security.URLTest do
     assert Dunda.Security.URL.safe_https_url?("https://www.example.com/events")
     refute Dunda.Security.URL.safe_https_url?("https://example.com.evil.test/events")
   end
+
+  test "rejects CGNAT, Benchmark, and IPv4-mapped IPv6 SSRF targets" do
+    refute Dunda.Security.URL.safe_https_url?("https://100.64.0.1/events")
+    refute Dunda.Security.URL.safe_https_url?("https://198.18.0.1/events")
+    refute Dunda.Security.URL.safe_https_url?("https://[::ffff:169.254.169.254]/events")
+    refute Dunda.Security.URL.safe_https_url?("https://[::ffff:10.0.0.1]/events")
+  end
 end

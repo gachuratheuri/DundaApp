@@ -278,32 +278,38 @@ defmodule Dunda.Checkout do
     key = attrs[:idempotency_key] || attrs["idempotency_key"]
     phone = normalise_phone(attrs[:phone] || attrs["phone"])
 
-    Repo.transaction(fn ->
-      existing =
-        Repo.one(
-          from p in PaymentIntent,
-            where: p.user_id == ^user_id and p.idempotency_key == ^key,
-            lock: "FOR UPDATE"
-        )
+    cond do
+      not is_binary(key) or byte_size(key) not in 16..200 ->
+        {:error, :idempotency_key_required}
 
-      cond do
-        existing && existing.quote_id == quote_id ->
-          existing
+      is_nil(quote_id) ->
+        {:error, :quote_not_found}
 
-        existing ->
-          Repo.rollback(:idempotency_conflict)
+      is_nil(phone) ->
+        {:error, :bad_phone}
 
-        not is_binary(key) or byte_size(key) not in 16..200 ->
-          Repo.rollback(:idempotency_key_required)
+      true ->
+        Repo.transaction(fn ->
+          existing =
+            Repo.one(
+              from p in PaymentIntent,
+                where: p.user_id == ^user_id and p.idempotency_key == ^key,
+                lock: "FOR UPDATE"
+            )
 
-        is_nil(phone) ->
-          Repo.rollback(:bad_phone)
+          cond do
+            existing && existing.quote_id == quote_id ->
+              existing
 
-        true ->
-          reserve_from_quote!(user_id, quote_id, key, phone)
-      end
-    end)
-    |> unwrap()
+            existing ->
+              Repo.rollback(:idempotency_conflict)
+
+            true ->
+              reserve_from_quote!(user_id, quote_id, key, phone)
+          end
+        end)
+        |> unwrap()
+    end
   end
 
   defp reserve_from_quote!(user_id, quote_id, key, phone) do
@@ -330,16 +336,18 @@ defmodule Dunda.Checkout do
       true ->
         pool = pool_for_quote!(quote)
 
-        {count, _} =
+        {count, select_results} =
           Repo.update_all(
             from(p in InventoryPool,
-              where: p.id == ^pool.id and p.capacity - p.reserved - p.sold >= ^quote.quantity
+              where: p.id == ^pool.id and p.capacity - p.reserved - p.sold >= ^quote.quantity,
+              select: p.version
             ),
             inc: [reserved: quote.quantity, version: 1]
           )
 
         if count != 1, do: Repo.rollback(:inventory_unavailable)
-        enqueue_inventory_projection!(pool.id, pool.version + 1)
+        new_version = List.first(select_results) || (pool.version + 1)
+        enqueue_inventory_projection!(pool.id, new_version)
 
         intent =
           Repo.insert!(
@@ -668,15 +676,17 @@ defmodule Dunda.Checkout do
               lock: "FOR UPDATE"
           )
 
-        {1, _} =
+        {1, select_results} =
           Repo.update_all(
             from(p in InventoryPool,
-              where: p.id == ^pool.id and p.reserved >= ^reservation.quantity
+              where: p.id == ^pool.id and p.reserved >= ^reservation.quantity,
+              select: p.version
             ),
             inc: [reserved: -reservation.quantity, version: 1]
           )
 
-        enqueue_inventory_projection!(pool.id, pool.version + 1)
+        new_version = List.first(select_results) || (pool.version + 1)
+        enqueue_inventory_projection!(pool.id, new_version)
 
         Repo.update!(
           InventoryReservation.changeset(reservation, %{status: "released", released_at: now})
@@ -1020,14 +1030,18 @@ defmodule Dunda.Checkout do
 
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
-    {count, _} =
+    {count, select_results} =
       Repo.update_all(
-        from(p in InventoryPool, where: p.id == ^pool.id and p.reserved >= ^reservation.quantity),
+        from(p in InventoryPool,
+          where: p.id == ^pool.id and p.reserved >= ^reservation.quantity,
+          select: p.version
+        ),
         inc: [reserved: -reservation.quantity, version: 1]
       )
 
     if count != 1, do: Repo.rollback(:reservation_release_conflict)
-    enqueue_inventory_projection!(pool.id, pool.version + 1)
+    new_version = List.first(select_results) || (pool.version + 1)
+    enqueue_inventory_projection!(pool.id, new_version)
 
     Repo.update!(
       InventoryReservation.changeset(reservation, %{status: "released", released_at: now})

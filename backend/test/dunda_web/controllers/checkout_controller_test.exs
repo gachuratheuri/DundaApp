@@ -148,4 +148,20 @@ defmodule DundaWeb.CheckoutControllerTest do
 
     assert %{"error" => %{"code" => "max_per_order_exceeded"}} = json_response(conn, 422)
   end
+
+  test "checkout with missing idempotency key returns 422 rather than 500", ctx do
+    quote_conn =
+      post(ctx.conn, "/api/quotes", %{
+        "event_id" => to_string(ctx.event.id),
+        "tier_id" => to_string(ctx.tier.id),
+        "quantity" => 1
+      })
+
+    quote_id = json_response(quote_conn, 200)["data"]["quote_id"]
+
+    conn =
+      post(ctx.conn, "/api/checkout", %{"quote_id" => quote_id, "phone" => "0712345678"})
+
+    assert %{"error" => %{"code" => "idempotency_key_required"}} = json_response(conn, 422)
+  end
 end

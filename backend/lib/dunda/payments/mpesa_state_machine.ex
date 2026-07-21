@@ -146,6 +146,11 @@ defmodule Dunda.Payments.MpesaStateMachine do
       {:error, :pending} ->
         Process.send_after(self(), :poll_status, @poll_backoff_ms)
         {:keep_state, Map.update!(data, :retry_count, &(&1 + 1))}
+
+      {:error, reason} ->
+        Logger.error("M-Pesa status query error for #{data.transaction_id}: #{inspect(reason)}")
+        Process.send_after(self(), :poll_status, @poll_backoff_ms)
+        {:keep_state, Map.update!(data, :retry_count, &(&1 + 1))}
     end
   end
 

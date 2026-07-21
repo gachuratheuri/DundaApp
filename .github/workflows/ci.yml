@@ -151,8 +151,9 @@ jobs:
           changed_migrations=$(git diff --name-only --diff-filter=M "origin/${{ github.base_ref }}"...HEAD -- priv/repo/migrations/ || true)
           failed=0
           for migration in $changed_migrations; do
-            if grep -Fxq "$migration" priv/repo/deployed_migrations.txt; then
-              echo "::error file=$migration::deployed migration modified; add a forward migration instead"
+            rel_migration="${migration#backend/}"
+            if grep -Fxq "$rel_migration" priv/repo/deployed_migrations.txt || grep -Fxq "$migration" priv/repo/deployed_migrations.txt; then
+              echo "::error file=$rel_migration::deployed migration modified; add a forward migration instead"
               failed=1
             fi
           done
@@ -162,16 +163,20 @@ jobs:
         if: github.event_name == 'pull_request'
         run: |
           git fetch origin ${{ github.base_ref }} --depth=1
-          changed_tests=$(git diff --name-only --diff-filter=ACM "origin/${{ github.base_ref }}"...HEAD -- 'test/**/*_test.exs' || true)
+          changed_tests=$(git diff --name-only --diff-filter=ACM "origin/${{ github.base_ref }}"...HEAD -- 'test/**/*_test.exs' 'backend/test/**/*_test.exs' || true)
           failed=0
           for f in $changed_tests; do
-            if [ -f "$f" ]; then
-              if grep -nE '^\s*#\s*(assert|refute|flunk)' "$f"; then
-                echo "::error file=$f::commented-out assertion found"
+            target="$f"
+            if [ ! -f "$target" ]; then
+              target="${f#backend/}"
+            fi
+            if [ -f "$target" ]; then
+              if grep -nE '^\s*#\s*(assert|refute|flunk)' "$target"; then
+                echo "::error file=$target::commented-out assertion found"
                 failed=1
               fi
-              if grep -nE '^\s*assert\s+true\s*$' "$f"; then
-                echo "::error file=$f::vacuous 'assert true' found"
+              if grep -nE '^\s*assert\s+true\s*$' "$target"; then
+                echo "::error file=$target::vacuous 'assert true' found"
                 failed=1
               fi
             fi
