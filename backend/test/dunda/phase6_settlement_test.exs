@@ -9,8 +9,8 @@ defmodule Dunda.Phase6SettlementTest do
   test "resale listings require a non-negative face-value-capped price" do
     changeset =
       Listing.changeset(%Listing{}, %{
-        asking_price_kes: 101,
-        face_value_kes: 100,
+        asking_price_cents: 10_100,
+        face_value_cents: 10_000,
         status: "active",
         ticket_id: Ecto.UUID.generate(),
         seller_id: 1
@@ -68,7 +68,7 @@ defmodule Dunda.Phase6SettlementTest do
     changeset =
       Ticket.changeset(%Ticket{}, %{
         tier_label: "VIP",
-        price_kes: 100,
+        price_cents: 10_000,
         status: "refunded",
         user_id: 1,
         event_id: 1

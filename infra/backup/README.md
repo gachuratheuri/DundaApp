@@ -48,7 +48,7 @@ Redis is disposable in production. After a Redis failover or data loss:
    green.
 
 Do not copy an RDB/AOF snapshot into a different topology as a substitute for
-   reconstruction, and do not enable `INVENTORY_AUTHORITY=redis_legacy` in a
+   reconstruction; `INVENTORY_AUTHORITY` must remain `postgres` in every
    production deployment.
 
 ## Access and retention

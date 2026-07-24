@@ -13,11 +13,17 @@ defmodule Dunda.Security.Webhook do
   def valid?(conn, provider) when provider in [:daraja, :pesapal] do
     configured = (Application.get_env(:dunda, :webhook_secrets) || []) |> Keyword.get(provider)
 
+    params =
+      case conn.params do
+        %Plug.Conn.Unfetched{} -> %{}
+        params when is_map(params) -> params
+      end
+
     supplied =
       get_req_header(conn, "x-dunda-webhook-secret")
-      |> List.first()
-      || Map.get(conn.params || %{}, "secret")
-      || Map.get(conn.params || %{}, "token")
+      |> List.first() ||
+        Map.get(params, "secret") ||
+        Map.get(params, "token")
 
     is_binary(configured) and configured != "" and is_binary(supplied) and
       byte_size(configured) == byte_size(supplied) and

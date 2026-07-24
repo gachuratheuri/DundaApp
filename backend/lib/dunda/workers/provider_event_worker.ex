@@ -1,6 +1,10 @@
 defmodule Dunda.Workers.ProviderEventWorker do
   @moduledoc "Deduplicated provider-event consumer; provider truth is checked before confirmation."
-  use Oban.Worker, queue: :payments, max_attempts: 10
+  use Oban.Worker,
+    queue: :payments,
+    max_attempts: 10,
+    unique: [period: :infinity, fields: [:args], keys: [:provider_event_id]]
+
   import Ecto.Query, only: [from: 2]
   alias Dunda.Checkout.ProviderEvent
   alias Dunda.Repo
@@ -64,11 +68,12 @@ defmodule Dunda.Workers.ProviderEventWorker do
     end
   end
 
-  defp reconcile(%ProviderEvent{
-         provider: "mpesa",
-         provider_checkout_id: checkout_id,
-         payload: payload
-       }) do
+  defp reconcile(
+         %ProviderEvent{
+           provider: "mpesa",
+           provider_checkout_id: checkout_id
+         } = event
+       ) do
     with {:ok, intent_id} <- intent_id(checkout_id) do
       # Daraja callbacks do not provide a provider-verifiable signature. The
       # callback is therefore only evidence carrying receipt metadata; the
@@ -80,7 +85,7 @@ defmodule Dunda.Workers.ProviderEventWorker do
             intent_id,
             checkout_id,
             status,
-            normalise_mpesa_callback(payload)
+            normalise_mpesa_callback(event_payload(event))
           )
 
         {:error, :pending} ->
@@ -187,6 +192,16 @@ defmodule Dunda.Workers.ProviderEventWorker do
 
   defp normalise_mpesa_callback(payload) when is_map(payload),
     do: merge_callback_metadata(payload)
+
+  defp event_payload(%ProviderEvent{payload_encrypted: encrypted, payload: fallback})
+       when is_binary(encrypted) do
+    case Jason.decode(encrypted) do
+      {:ok, payload} when is_map(payload) -> payload
+      _ -> fallback
+    end
+  end
+
+  defp event_payload(%ProviderEvent{payload: payload}), do: payload
 
   defp merge_callback_metadata(callback) do
     items = get_in(callback, ["CallbackMetadata", "Item"]) || []

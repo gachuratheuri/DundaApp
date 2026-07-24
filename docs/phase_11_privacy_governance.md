@@ -85,14 +85,13 @@ was updated to match.
   `Dunda.Audit`'s `@sensitive_keys` list), plus a `redact/1` helper applying
   a best-effort regex scrub (bearer/JWT tokens, Kenyan MSISDNs) to binary
   values. This is defence-in-depth, not the primary control — the primary
-  control is the four concrete unredacted-logging call sites this phase
-  fixed directly: `Dunda.Workers.MpesaPoller` (logs a receipt SHA-256
-  fingerprint instead of the raw receipt), `Dunda.Billing.Pesapal.HTTP` and
+  control is the concrete unredacted-logging call sites this phase
+  fixed directly: provider reconciliation workers log bounded fingerprints
+  instead of raw receipts, while `Dunda.Billing.Pesapal.HTTP` and
   `Dunda.Payments.Daraja.HTTP` (redact the provider response body before
-  `inspect/1`), `DundaWeb.MpesaController` (redacts the inspected STK
-  callback payload).
+  `inspect/1`); provider callback controllers do not inspect raw payloads.
 - Correlation metadata: `payment_intent_id` (`checkout_controller.ex`),
-  `checkout_request_id` (`mpesa_controller.ex`), `order_tracking_id`/
+  `checkout_request_id`, `order_tracking_id`/
   `merchant_reference` (`ipn_controller.ex`), `organiser_user_id`
   (`organiser_auth_plug.ex`) are set via `Logger.metadata/1` at the point
   each becomes known in the request process — this satisfies both this

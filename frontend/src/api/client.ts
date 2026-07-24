@@ -72,6 +72,20 @@ class ApiClient {
     await Promise.all([secureDelete(ACCESS_TOKEN_KEY), secureDelete(REFRESH_TOKEN_KEY)]);
   }
 
+  async logout(allDevices = false): Promise<void> {
+    const refreshToken = await secureGet(REFRESH_TOKEN_KEY);
+    try {
+      await this.post(
+        '/auth/logout',
+        { refresh_token: refreshToken, all_devices: allDevices },
+        {},
+        { skipRefresh: true },
+      );
+    } finally {
+      await this.removeToken();
+    }
+  }
+
   async getUser(): Promise<Record<string, any> | null> {
     const userJson = await AsyncStorage.getItem(USER_KEY);
     if (!userJson) return null;
@@ -108,12 +122,13 @@ class ApiClient {
       const refreshToken = await secureGet(REFRESH_TOKEN_KEY);
       if (!refreshToken) return false;
 
+      const timeout = this.timeout(DEFAULT_TIMEOUT_MS);
       try {
         const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ refresh_token: refreshToken }),
-          signal: this.timeoutSignal(DEFAULT_TIMEOUT_MS),
+          signal: timeout.signal,
         });
         const payload: unknown = await response.json().catch(() => ({}));
         if (!response.ok) return false;
@@ -125,6 +140,8 @@ class ApiClient {
         return true;
       } catch {
         return false;
+      } finally {
+        timeout.cancel();
       }
     })().finally(() => {
       this.refreshPromise = null;
@@ -133,10 +150,10 @@ class ApiClient {
     return this.refreshPromise;
   }
 
-  private timeoutSignal(timeoutMs: number): AbortSignal {
+  private timeout(timeoutMs: number): { signal: AbortSignal; cancel: () => void } {
     const controller = new AbortController();
-    setTimeout(() => controller.abort(), timeoutMs);
-    return controller.signal;
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    return { signal: controller.signal, cancel: () => clearTimeout(timer) };
   }
 
   async request(endpoint: string, options: RequestOptions = {}): Promise<any> {
@@ -149,14 +166,17 @@ class ApiClient {
     if (token) headers.set('Authorization', `Bearer ${token}`);
 
     const { timeoutMs = DEFAULT_TIMEOUT_MS, skipRefresh, ...fetchOptions } = options;
+    const timeout = this.timeout(timeoutMs);
     let response: Response;
     try {
-      response = await fetch(url, { ...fetchOptions, headers, signal: this.timeoutSignal(timeoutMs) });
+      response = await fetch(url, { ...fetchOptions, headers, signal: timeout.signal });
     } catch (error) {
       if (typeof error === 'object' && error !== null && (error as { name?: string }).name === 'AbortError') {
         throw new ApiError('The request timed out. Check your connection and try again.', { retriable: true });
       }
       throw new ApiError('Unable to reach the service. Check your connection and try again.', { retriable: true });
+    } finally {
+      timeout.cancel();
     }
 
     const payload: unknown = await response.json().catch(() => ({}));

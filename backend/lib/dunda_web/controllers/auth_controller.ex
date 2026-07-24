@@ -4,7 +4,7 @@ defmodule DundaWeb.AuthController do
   alias Dunda.Accounts
   alias Dunda.Auth.GoogleVerifier
   alias Dunda.Auth.OTP
-  alias DundaWeb.Auth.Token
+  alias Dunda.Auth.Sessions
 
   @doc """
   Registers a new user with email and password.
@@ -24,8 +24,7 @@ defmodule DundaWeb.AuthController do
             provider: "email"
           })
 
-        token = Token.sign(user)
-        render(conn, :auth_success, user: user, token: token)
+        issue_session(conn, user)
 
       {:error, changeset} ->
         conn
@@ -46,8 +45,7 @@ defmodule DundaWeb.AuthController do
         _ =
           Dunda.Audit.record_from_conn(conn, "auth.login", "user", user.id, %{provider: "email"})
 
-        token = Token.sign(user)
-        render(conn, :auth_success, user: user, token: token)
+        issue_session(conn, user)
 
       nil ->
         conn
@@ -87,7 +85,7 @@ defmodule DundaWeb.AuthController do
         case Accounts.upsert_oauth_user(%{
                provider: "phone",
                uid: phone,
-               email: "#{phone}@dunda.app",
+               email: nil,
                name: "Guest User",
                avatar_url: nil
              }) do
@@ -97,8 +95,7 @@ defmodule DundaWeb.AuthController do
                 provider: "phone"
               })
 
-            token = Token.sign(user)
-            render(conn, :auth_success, user: user, token: token)
+            issue_session(conn, user)
 
           {:error, :identity_conflict} ->
             conn |> put_status(:conflict) |> json(%{error: %{code: "identity_conflict"}})
@@ -134,8 +131,7 @@ defmodule DundaWeb.AuthController do
                 provider: "google"
               })
 
-            token = Token.sign(user)
-            render(conn, :auth_success, user: user, token: token)
+            issue_session(conn, user)
 
           {:error, :identity_conflict} ->
             conn
@@ -158,6 +154,62 @@ defmodule DundaWeb.AuthController do
   end
 
   def google(conn, _params), do: invalid_request(conn)
+
+  def refresh(conn, %{"refresh_token" => refresh_token} = params) do
+    case Sessions.rotate(refresh_token, params["device_id"]) do
+      {:ok, session} ->
+        render(conn, :auth_success,
+          user: session.user,
+          token: session.access_token,
+          refresh_token: session.refresh_token
+        )
+
+      {:error, _reason} ->
+        conn
+        |> put_status(:unauthorized)
+        |> json(%{error: %{code: "invalid_session"}})
+    end
+  end
+
+  def refresh(conn, _params), do: invalid_request(conn)
+
+  def logout(conn, params) do
+    user = conn.assigns.current_user
+
+    result =
+      if params["all_devices"] == true do
+        Sessions.revoke_all(user)
+      else
+        Sessions.revoke(params["refresh_token"])
+      end
+
+    case result do
+      {:error, _reason} ->
+        conn |> put_status(:service_unavailable) |> json(%{error: %{code: "logout_failed"}})
+
+      _ ->
+        _ = Dunda.Audit.record_from_conn(conn, "auth.logout", "user", user.id, %{})
+        send_resp(conn, :no_content, "")
+    end
+  end
+
+  defp issue_session(conn, user) do
+    device_id = conn.body_params["device_id"]
+
+    case Sessions.issue(user, device_id) do
+      {:ok, session} ->
+        render(conn, :auth_success,
+          user: user,
+          token: session.access_token,
+          refresh_token: session.refresh_token
+        )
+
+      {:error, _reason} ->
+        conn
+        |> put_status(:service_unavailable)
+        |> json(%{error: %{code: "session_creation_failed"}})
+    end
+  end
 
   defp invalid_request(conn) do
     conn

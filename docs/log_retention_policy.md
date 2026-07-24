@@ -18,9 +18,9 @@ installed as a global `:logger` primary filter at boot
   MSISDN/phone, bearer, JWT, security credential, etc.);
 - bearer tokens, JWTs, and Kenyan MSISDNs appearing in binary values passed
   through `Dunda.Logging.Redactor.redact/1` at call sites that must
-  `inspect/1` a provider payload (`Dunda.Workers.MpesaPoller`,
-  `Dunda.Billing.Pesapal.HTTP`, `Dunda.Payments.Daraja.HTTP`,
-  `DundaWeb.MpesaController`).
+  `inspect/1` a provider payload (`Dunda.Billing.Pesapal.HTTP`,
+  `Dunda.Payments.Daraja.HTTP`,
+  provider callback controllers).
 
 This is defence-in-depth, not a guarantee against every possible future log
 call embedding sensitive data in an interpolated string the filter cannot

@@ -14,8 +14,8 @@ defmodule DundaWeb.ResaleJSON do
       id: listing.id,
       ticket_id: listing.ticket_id,
       seller_id: listing.seller_id,
-      asking_price_kes: listing.asking_price_kes,
-      face_value_kes: listing.face_value_kes,
+      asking_price_cents: listing.asking_price_cents,
+      face_value_cents: listing.face_value_cents,
       status: listing.status,
       ticket_details: ticket_details(listing)
     }

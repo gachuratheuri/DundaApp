@@ -99,7 +99,5 @@ defmodule DundaWeb.CheckoutController do
   end
 
   defp format_error_code(reason) when is_atom(reason), do: to_string(reason)
-  defp format_error_code(reason) when is_binary(reason), do: reason
-  defp format_error_code({code, _detail}) when is_atom(code) or is_binary(code), do: to_string(code)
-  defp format_error_code(reason), do: inspect(reason)
+  defp format_error_code(reason), do: DundaWeb.ErrorCode.code(reason)
 end

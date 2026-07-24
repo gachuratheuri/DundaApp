@@ -8,17 +8,7 @@ defmodule Dunda.Security.URL do
 
   @spec safe_https_url?(term()) :: boolean()
   def safe_https_url?(url) when is_binary(url) do
-    case URI.parse(String.trim(url)) do
-      %URI{scheme: "https", host: host, userinfo: nil, port: port}
-      when is_binary(host) and (is_nil(port) or port == 443) ->
-        host = String.downcase(host)
-
-        host not in ["localhost", "metadata.google.internal"] and not private_host?(host) and
-          allowed_host?(host)
-
-      _ ->
-        false
-    end
+    match?({:ok, _uri, _addresses}, validate_and_resolve(url))
   end
 
   def safe_https_url?(_), do: false
@@ -48,55 +38,65 @@ defmodule Dunda.Security.URL do
   end
 
   defp do_fetch(url, timeout, redirects) when redirects <= @max_redirects do
-    if not safe_https_url?(url) do
-      {:error, :unsafe_url}
-    else
-      case Req.get(url,
-             max_retries: 0,
-             receive_timeout: timeout,
-             decode_body: false,
-             redirect: false
-           ) do
-        {:ok, %{status: status, headers: headers}} when status in 300..399 ->
-          case header(headers, "location") do
-            nil ->
-              {:error, :redirect_without_location}
+    case validate_and_resolve(url) do
+      {:ok, uri, [address | _]} ->
+        original_host = String.downcase(uri.host)
+        pinned_url = %{uri | host: address |> :inet.ntoa() |> to_string()} |> URI.to_string()
 
-            location ->
-              next_url = URI.merge(url, location) |> URI.to_string()
+        case Req.get(pinned_url,
+               max_retries: 0,
+               receive_timeout: timeout,
+               decode_body: false,
+               redirect: false,
+               headers: [{"host", original_host}, {"accept-encoding", "identity"}],
+               connect_options: [hostname: original_host]
+             ) do
+          {:ok, %{status: status, headers: headers}} when status in 300..399 ->
+            case header(headers, "location") do
+              nil ->
+                {:error, :redirect_without_location}
 
-              if redirects == @max_redirects,
-                do: {:error, :too_many_redirects},
-                else: do_fetch(next_url, timeout, redirects + 1)
-          end
+              location ->
+                next_url = URI.merge(uri, location) |> URI.to_string()
 
-        {:ok, %{status: 200, headers: headers, body: body}} ->
-          cond do
-            body_size_header(headers) > @max_body_bytes -> {:error, :response_too_large}
-            is_binary(body) and byte_size(body) <= @max_body_bytes -> {:ok, body}
-            true -> {:error, :response_too_large}
-          end
+                if redirects == @max_redirects,
+                  do: {:error, :too_many_redirects},
+                  else: do_fetch(next_url, timeout, redirects + 1)
+            end
 
-        {:ok, %{status: 200, body: body}}
-        when is_binary(body) and byte_size(body) <= @max_body_bytes ->
-          {:ok, body}
+          {:ok, %{status: 200, headers: headers, body: body}} ->
+            cond do
+              body_size_header(headers) > @max_body_bytes -> {:error, :response_too_large}
+              is_binary(body) and byte_size(body) <= @max_body_bytes -> {:ok, body}
+              true -> {:error, :response_too_large}
+            end
 
-        {:ok, %{status: 200}} ->
-          {:error, :response_too_large}
+          {:ok, %{status: 200, body: body}}
+          when is_binary(body) and byte_size(body) <= @max_body_bytes ->
+            {:ok, body}
 
-        {:ok, %{status: status}} ->
-          {:error, {:http_status, status}}
+          {:ok, %{status: 200}} ->
+            {:error, :response_too_large}
 
-        {:error, reason} ->
-          {:error, reason}
-      end
+          {:ok, %{status: status}} ->
+            {:error, {:http_status, status}}
+
+          {:error, reason} ->
+            {:error, reason}
+        end
+
+      _ ->
+        {:error, :unsafe_url}
     end
   end
 
   defp do_fetch(_url, _timeout, _redirects), do: {:error, :too_many_redirects}
 
   defp header(headers, name) when is_map(headers),
-    do: Map.get(headers, name) || Map.get(headers, String.downcase(name))
+    do: normalise_header(Map.get(headers, name) || Map.get(headers, String.downcase(name)))
+
+  defp normalise_header([value | _]) when is_binary(value), do: value
+  defp normalise_header(value), do: value
 
   defp body_size_header(headers) do
     case header(headers, "content-length") do
@@ -114,15 +114,32 @@ defmodule Dunda.Security.URL do
     end
   end
 
-  defp private_host?(host) do
+  defp validate_and_resolve(url) do
+    with %URI{scheme: "https", host: host, userinfo: nil, port: port} = uri <-
+           URI.parse(String.trim(url)),
+         true <- is_binary(host) and (is_nil(port) or port == 443),
+         host = String.downcase(host),
+         true <- host not in ["localhost", "metadata.google.internal"],
+         true <- allowed_host?(host),
+         {:ok, addresses} <- resolve_addresses(host),
+         true <- addresses != [] and Enum.all?(addresses, &(not private_ip?(&1))) do
+      {:ok, %{uri | host: host}, addresses}
+    else
+      _ -> {:error, :unsafe_url}
+    end
+  rescue
+    _ -> {:error, :unsafe_url}
+  end
+
+  defp resolve_addresses(host) do
     v4 = :inet.getaddrs(String.to_charlist(host), :inet)
     v6 = :inet.getaddrs(String.to_charlist(host), :inet6)
 
     case {v4, v6} do
-      {{:ok, addresses}, {:ok, addresses6}} -> Enum.any?(addresses ++ addresses6, &private_ip?/1)
-      {{:ok, addresses}, _} -> Enum.any?(addresses, &private_ip?/1)
-      {_, {:ok, addresses6}} -> Enum.any?(addresses6, &private_ip?/1)
-      _ -> true
+      {{:ok, addresses}, {:ok, addresses6}} -> {:ok, addresses ++ addresses6}
+      {{:ok, addresses}, _} -> {:ok, addresses}
+      {_, {:ok, addresses6}} -> {:ok, addresses6}
+      _ -> {:error, :dns_resolution_failed}
     end
   end
 

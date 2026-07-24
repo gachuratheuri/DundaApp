@@ -46,7 +46,7 @@ interface TicketData {
   is_vip:     boolean;
   holder:     string;
   jwt:        string;
-  face_value_kes?: number;
+  face_value_cents?: number;
   protocol_version?: number;
   credential_public_key?: string | null;
   credential_valid_until?: string | null;
@@ -425,7 +425,7 @@ export const TicketVaultScreen: React.FC<Props> = ({ ticketId, onBack }) => {
                     keyboardType="number-pad"
                     value={askingPrice}
                     onChangeText={setAskingPrice}
-                    placeholder={ticket?.face_value_kes ? String(ticket.face_value_kes / 100) : 'Unavailable'}
+                    placeholder={ticket?.face_value_cents ? String(ticket.face_value_cents / 100) : 'Unavailable'}
                     placeholderTextColor={Colors.periwinkle}
                     accessibilityLabel="Resale asking price in Kenyan shillings"
                   />
@@ -436,10 +436,10 @@ export const TicketVaultScreen: React.FC<Props> = ({ ticketId, onBack }) => {
                     if (ticket) {
                       const amountKes = Number(askingPrice);
                       const askingPriceCents = Math.round(amountKes * 100);
-                      if (!Number.isSafeInteger(askingPriceCents) || askingPriceCents < 0 || ticket.face_value_kes == null || askingPriceCents > ticket.face_value_kes) {
+                      if (!Number.isSafeInteger(askingPriceCents) || askingPriceCents < 0 || ticket.face_value_cents == null || askingPriceCents > ticket.face_value_cents) {
                         throw new Error('Enter a price no greater than the original face value.');
                       }
-                      await api.post('/resale/listings', { ticket_id: ticket.id, asking_price_kes: askingPriceCents });
+                      await api.post('/resale/listings', { ticket_id: ticket.id, asking_price_cents: askingPriceCents });
                       setTicket({...ticket, resale_status: 'pending'});
                     }
                   } catch (e: any) {

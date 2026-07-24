@@ -19,7 +19,8 @@ defmodule Dunda.Payments.Daraja.Sandbox do
      %{
        "ResultCode" => "0",
        "ResultDesc" => "The service request is processed successfully.",
-       "MpesaReceiptNumber" => "SANDBOX" <> Integer.to_string(System.unique_integer([:positive]))
+       "MpesaReceiptNumber" => "SANDBOX" <> Integer.to_string(System.unique_integer([:positive])),
+       "Amount" => 1
      }}
   end
 

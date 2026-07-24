@@ -77,6 +77,88 @@ defmodule Dunda.Accounts.Privacy do
                    inserted_at: t.inserted_at
                  }
              ),
+           orders:
+             Repo.all(
+               from o in Dunda.Billing.Order,
+                 where: o.user_id == ^user_id,
+                 select: %{
+                   id: o.id,
+                   event_id: o.event_id,
+                   amount_cents: o.amount_cents,
+                   currency: o.currency,
+                   quantity: o.quantity,
+                   kind: o.kind,
+                   status: o.status,
+                   refunded_amount_cents: o.refunded_amount_cents,
+                   inserted_at: o.inserted_at
+                 }
+             ),
+           payment_intents:
+             Repo.all(
+               from p in Dunda.Checkout.PaymentIntent,
+                 where: p.user_id == ^user_id,
+                 select: %{
+                   id: p.id,
+                   event_id: p.event_id,
+                   amount_cents: p.amount_cents,
+                   currency: p.currency,
+                   quantity: p.quantity,
+                   state: p.state,
+                   provider: p.provider,
+                   inserted_at: p.inserted_at
+                 }
+             ),
+           resale_listings:
+             Repo.all(
+               from l in Dunda.Market.Listing,
+                 where: l.seller_id == ^user_id or l.buyer_id == ^user_id,
+                 select: %{
+                   id: l.id,
+                   ticket_id: l.ticket_id,
+                   seller_id: l.seller_id,
+                   buyer_id: l.buyer_id,
+                   asking_price_cents: l.asking_price_cents,
+                   face_value_cents: l.face_value_cents,
+                   status: l.status,
+                   inserted_at: l.inserted_at
+                 }
+             ),
+           scans:
+             Repo.all(
+               from s in Dunda.Ticketing.TicketScan,
+                 join: t in Dunda.Ticketing.Ticket,
+                 on: t.id == s.ticket_id,
+                 where: t.user_id == ^user_id,
+                 select: %{
+                   id: s.id,
+                   ticket_id: s.ticket_id,
+                   event_id: s.event_id,
+                   result: s.result,
+                   gate: s.gate,
+                   scanned_at: s.scanned_at
+                 }
+             ),
+           memberships:
+             Repo.all(
+               from m in Dunda.Organisations.OrganisationMember,
+                 where: m.user_id == ^user_id,
+                 select: %{
+                   organisation_id: m.organisation_id,
+                   role: m.role,
+                   accepted_at: m.accepted_at
+                 }
+             ),
+           consents:
+             Repo.all(
+               from c in Dunda.Accounts.Consent,
+                 where: c.user_id == ^user_id,
+                 select: %{
+                   purpose: c.purpose,
+                   version: c.version,
+                   granted_at: c.granted_at,
+                   revoked_at: c.revoked_at
+                 }
+             ),
            requests:
              Repo.all(
                from r in DataSubjectRequest,
@@ -222,6 +304,29 @@ defmodule Dunda.Accounts.Privacy do
         end
 
       pseudonym = "deleted-" <> Ecto.UUID.generate() <> "@dunda.invalid"
+      timestamp = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      Repo.update_all(
+        from(o in Dunda.Billing.Order, where: o.user_id == ^user_id),
+        set: [phone_encrypted: nil, updated_at: timestamp]
+      )
+
+      Repo.update_all(
+        from(p in Dunda.Checkout.PaymentIntent, where: p.user_id == ^user_id),
+        set: [phone_encrypted: nil, updated_at: timestamp]
+      )
+
+      Repo.update_all(
+        from(t in Dunda.Ticketing.Ticket, where: t.user_id == ^user_id),
+        set: [holder_name: nil, updated_at: timestamp]
+      )
+
+      Repo.update_all(
+        from(t in Dunda.Auth.RefreshToken, where: t.user_id == ^user_id and is_nil(t.revoked_at)),
+        set: [revoked_at: timestamp, updated_at: timestamp]
+      )
+
+      Repo.update!(User.auth_version_changeset(user, user.auth_version + 1))
 
       case user
            |> User.privacy_changeset(%{

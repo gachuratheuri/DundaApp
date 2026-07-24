@@ -20,25 +20,40 @@ defmodule Dunda.Ticketing.Manifests do
            0) + 1
 
       payload = payload(event)
-      signature = ManifestProtocol.sign(payload)
+      key_id = ManifestProtocol.key_id()
+      valid_from = DateTime.add(event.starts_at, -7_200, :second)
+
+      valid_until =
+        DateTime.add(
+          event.ends_at || DateTime.add(event.starts_at, 86_400, :second),
+          21_600,
+          :second
+        )
+
+      document =
+        ManifestProtocol.signed_document(
+          event.id,
+          version,
+          key_id,
+          valid_from,
+          valid_until,
+          payload
+        )
+
+      signature = ManifestProtocol.sign(document)
 
       attrs = %{
         event_id: event.id,
         version: version,
-        key_id: ManifestProtocol.key_id(),
+        key_id: key_id,
         payload: payload,
         payload_hash:
-          Base.encode16(:crypto.hash(:sha256, ManifestProtocol.canonical_payload(payload)),
+          Base.encode16(:crypto.hash(:sha256, ManifestProtocol.canonical_payload(document)),
             case: :lower
           ),
         signature: signature,
-        valid_from: DateTime.add(event.starts_at, -7_200, :second),
-        valid_until:
-          DateTime.add(
-            event.ends_at || DateTime.add(event.starts_at, 86_400, :second),
-            21_600,
-            :second
-          ),
+        valid_from: valid_from,
+        valid_until: valid_until,
         published_at: now
       }
 
@@ -80,7 +95,18 @@ defmodule Dunda.Ticketing.Manifests do
   def valid?(%EventManifest{} = manifest, now \\ DateTime.utc_now()) do
     is_nil(manifest.revoked_at) and DateTime.compare(manifest.valid_from, now) != :gt and
       DateTime.compare(manifest.valid_until, now) == :gt and
-      ManifestProtocol.verify(manifest.payload, manifest.signature)
+      ManifestProtocol.verify(document(manifest), manifest.signature)
+  end
+
+  def document(%EventManifest{} = manifest) do
+    ManifestProtocol.signed_document(
+      manifest.event_id,
+      manifest.version,
+      manifest.key_id,
+      manifest.valid_from,
+      manifest.valid_until,
+      manifest.payload
+    )
   end
 
   defp payload(event) do

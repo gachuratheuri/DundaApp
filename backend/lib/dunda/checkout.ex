@@ -346,7 +346,7 @@ defmodule Dunda.Checkout do
           )
 
         if count != 1, do: Repo.rollback(:inventory_unavailable)
-        new_version = List.first(select_results) || (pool.version + 1)
+        new_version = List.first(select_results) || pool.version + 1
         enqueue_inventory_projection!(pool.id, new_version)
 
         intent =
@@ -411,6 +411,14 @@ defmodule Dunda.Checkout do
   end
 
   def advance_state(%PaymentIntent{} = intent, state, attrs \\ %{}) do
+    if state == "refunded" do
+      {:error, :refund_requires_compensating_transaction}
+    else
+      do_advance_state(intent, state, attrs)
+    end
+  end
+
+  defp do_advance_state(%PaymentIntent{} = intent, state, attrs) do
     Repo.transaction(fn ->
       current =
         Repo.one(from p in PaymentIntent, where: p.id == ^intent.id, lock: "FOR UPDATE") ||
@@ -439,7 +447,13 @@ defmodule Dunda.Checkout do
   end
 
   def record_provider_event(attrs) do
-    safe = Map.put(attrs, :payload, sanitize_payload(Map.get(attrs, :payload, %{})))
+    payload = sanitize_payload(Map.get(attrs, :payload, Map.get(attrs, "payload", %{})))
+
+    safe =
+      attrs
+      |> Map.put(:payload, %{"encrypted" => true, "schema_version" => 1})
+      |> Map.put(:payload_encrypted, Jason.encode!(payload))
+
     provider = Map.get(safe, :provider) || Map.get(safe, "provider")
     event_id = Map.get(safe, :provider_event_id) || Map.get(safe, "provider_event_id")
 
@@ -457,6 +471,28 @@ defmodule Dunda.Checkout do
       result ->
         result
     end
+  end
+
+  @doc """
+  Durably records a provider event and its unique processing job in one
+  PostgreSQL transaction. A process crash can therefore leave neither side or
+  both sides, but never an unprocessable event without a job.
+  """
+  def record_provider_event_and_enqueue(attrs) do
+    Repo.transaction(fn ->
+      event =
+        case record_provider_event(attrs) do
+          {:ok, event} -> event
+          {:error, reason} -> Repo.rollback(reason)
+        end
+
+      case Dunda.Workers.ProviderEventWorker.new(%{"provider_event_id" => event.id})
+           |> Oban.insert() do
+        {:ok, _job} -> event
+        {:error, reason} -> Repo.rollback({:provider_event_enqueue_failed, reason})
+      end
+    end)
+    |> unwrap()
   end
 
   def confirm_payment(intent_id, attrs) do
@@ -615,18 +651,22 @@ defmodule Dunda.Checkout do
 
     reconcile_refunded_inventory!(intent, had_admission, now)
 
-    Dunda.Checkout.Journal.post!(
-      "refund:#{intent.id}",
-      intent.currency,
-      [
-        {"organiser_payable", :debit, intent.amount_cents},
-        {"provider_clearing", :credit, intent.amount_cents}
-      ],
-      %{
-        payment_intent_id: intent.id,
-        provider_reference: attrs[:provider_reference] || attrs["provider_reference"]
-      }
-    )
+    refund_journal =
+      Dunda.Checkout.Journal.post!(
+        "refund:#{intent.id}",
+        intent.currency,
+        [
+          {"organiser_payable", :debit, intent.amount_cents},
+          {"provider_clearing", :credit, intent.amount_cents}
+        ],
+        %{
+          payment_intent_id: intent.id,
+          provider_reference: attrs[:provider_reference] || attrs["provider_reference"]
+        }
+      )
+
+    _ = refund_journal
+    Dunda.Checkout.Payables.apply_refund!(intent, intent.amount_cents)
 
     updated =
       Repo.update!(
@@ -685,7 +725,7 @@ defmodule Dunda.Checkout do
             inc: [reserved: -reservation.quantity, version: 1]
           )
 
-        new_version = List.first(select_results) || (pool.version + 1)
+        new_version = List.first(select_results) || pool.version + 1
         enqueue_inventory_projection!(pool.id, new_version)
 
         Repo.update!(
@@ -906,7 +946,7 @@ defmodule Dunda.Checkout do
         tier_id: intent.ticket_tier_id,
         ticket_batch_id: batch.id,
         tier_label: if(tier, do: String.upcase(tier.name), else: "GENERAL"),
-        price_kes: div(line.unit_price_cents, 100),
+        price_cents: line.unit_price_cents,
         status: "valid",
         jwt: nil,
         fulfillment_key: "payment-intent:#{intent.id}:line:#{line.id}:#{sequence}"
@@ -915,15 +955,25 @@ defmodule Dunda.Checkout do
       Repo.insert!(Ticket.changeset(%Ticket{}, attrs))
     end)
 
-    Dunda.Checkout.Journal.post!(
-      "settlement:#{intent.id}",
-      intent.currency,
-      [
-        {"provider_clearing", :debit, intent.amount_cents},
-        {"organiser_payable", :credit, intent.amount_cents}
-      ],
-      %{payment_intent_id: intent.id, provider_receipt: intent.provider_receipt}
-    )
+    settlement =
+      Dunda.Checkout.Journal.post!(
+        "settlement:#{intent.id}",
+        intent.currency,
+        [
+          {"provider_clearing", :debit, intent.amount_cents},
+          {"organiser_payable", :credit, intent.amount_cents}
+        ],
+        %{
+          payment_intent_id: intent.id,
+          provider_receipt: intent.provider_receipt,
+          provider: intent.provider,
+          payer_user_id: intent.user_id,
+          event_id: intent.event_id,
+          organisation_id: event.organisation_id
+        }
+      )
+
+    Dunda.Checkout.Payables.create_organiser!(settlement, intent, event.organisation_id)
 
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
@@ -968,23 +1018,36 @@ defmodule Dunda.Checkout do
   end
 
   def expire_reservations(now \\ DateTime.utc_now()) do
+    ids =
+      Repo.all(
+        from p in PaymentIntent,
+          where:
+            p.state in [
+              "created",
+              "inventory_reserved",
+              "provider_submission_pending",
+              "provider_pending",
+              "expired_pending_reconciliation",
+              "manual_review"
+            ] and p.expires_at < ^now,
+          order_by: [asc: p.expires_at, asc: p.id],
+          limit: 100,
+          select: p.id
+      )
+
+    {:ok, Enum.map(ids, &expire_reservation(&1, now))}
+  end
+
+  defp expire_reservation(intent_id, now) do
     Repo.transaction(fn ->
-      intents =
-        Repo.all(
+      intent =
+        Repo.one(
           from p in PaymentIntent,
-            where:
-              p.state in [
-                "created",
-                "inventory_reserved",
-                "provider_submission_pending",
-                "provider_pending",
-                "expired_pending_reconciliation",
-                "manual_review"
-              ] and p.expires_at < ^now,
-            lock: "FOR UPDATE SKIP LOCKED"
+            where: p.id == ^intent_id,
+            lock: "FOR UPDATE"
         )
 
-      Enum.map(intents, fn intent ->
+      if intent && intent.expires_at < now do
         case Repo.one(
                from r in InventoryReservation,
                  where:
@@ -995,7 +1058,7 @@ defmodule Dunda.Checkout do
           nil -> nil
           reservation -> expire_reservation_locked(reservation)
         end
-      end)
+      end
     end)
     |> unwrap()
   end
@@ -1040,7 +1103,7 @@ defmodule Dunda.Checkout do
       )
 
     if count != 1, do: Repo.rollback(:reservation_release_conflict)
-    new_version = List.first(select_results) || (pool.version + 1)
+    new_version = List.first(select_results) || pool.version + 1
     enqueue_inventory_projection!(pool.id, new_version)
 
     Repo.update!(
@@ -1201,23 +1264,46 @@ defmodule Dunda.Checkout do
 
   defp cast_uuid(v), do: v
 
-  defp sanitize_payload(payload) when is_map(payload) do
+  defp sanitize_payload(payload), do: sanitize_payload(payload, 0)
+
+  defp sanitize_payload(_payload, depth) when depth > 8, do: "[TRUNCATED]"
+
+  defp sanitize_payload(payload, depth) when is_map(payload) do
     payload
-    |> Enum.reject(fn {k, _} ->
-      String.contains?(String.downcase(to_string(k)), [
-        "token",
-        "secret",
-        "password",
-        "authorization"
-      ])
-    end)
     |> Enum.take(100)
-    |> Map.new(fn {k, v} ->
-      {to_string(k), if(is_binary(v), do: String.slice(v, 0, 2_000), else: inspect(v, limit: 20))}
+    |> Map.new(fn {key, value} ->
+      key = key |> to_string() |> String.slice(0, 200)
+
+      if sensitive_provider_key?(key) do
+        {key, "[REDACTED]"}
+      else
+        {key, sanitize_payload(value, depth + 1)}
+      end
     end)
   end
 
-  defp sanitize_payload(_), do: %{}
+  defp sanitize_payload(payload, depth) when is_list(payload),
+    do: payload |> Enum.take(200) |> Enum.map(&sanitize_payload(&1, depth + 1))
+
+  defp sanitize_payload(payload, _depth) when is_binary(payload),
+    do: String.slice(payload, 0, 4_000)
+
+  defp sanitize_payload(payload, _depth)
+       when is_integer(payload) or is_float(payload) or is_boolean(payload) or is_nil(payload),
+       do: payload
+
+  defp sanitize_payload(payload, _depth),
+    do: payload |> inspect(limit: 20, printable_limit: 1_000) |> String.slice(0, 1_000)
+
+  defp sensitive_provider_key?(key) do
+    key = String.downcase(key)
+
+    Enum.any?(
+      ~w(token secret password authorization passkey credential),
+      &String.contains?(key, &1)
+    )
+  end
+
   defp unwrap({:ok, value}), do: {:ok, value}
   defp unwrap({:error, reason}), do: {:error, reason}
 end

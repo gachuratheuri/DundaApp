@@ -21,7 +21,7 @@ defmodule DundaWeb.TicketJSON do
       venue: ticket.event.venue,
       date_label: format_date(ticket.event.starts_at),
       tier_label: ticket.tier_label,
-      face_value_kes: ticket.price_kes,
+      face_value_cents: ticket.price_cents,
       tier: ticket.tier_label,
       is_vip: is_vip,
       holder: holder,

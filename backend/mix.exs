@@ -44,11 +44,9 @@ defmodule Dunda.MixProject do
 
   defp deps do
     [
-      {:horde, "~> 0.9"},
       {:libcluster, "~> 3.3"},
       {:redix, "~> 1.1"},
       {:oban, "~> 2.15"},
-      {:gen_state_machine, "~> 3.0"},
       {:cloak_ecto, "~> 1.3"},
       {:bloomex, "~> 1.0"},
       {:ecto_sql, "~> 3.10"},

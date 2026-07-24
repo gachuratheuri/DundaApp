@@ -17,7 +17,7 @@ defmodule Dunda.Market do
   alias Ecto.Multi
 
   @doc "Creates one active listing with an immutable face-value snapshot."
-  def list_ticket(%Ticket{} = ticket, seller_id, asking_price) do
+  def list_ticket(%Ticket{} = ticket, seller_id, asking_price_cents) do
     if Dunda.Containment.blocked?(:resale) do
       {:error, :phase_0_containment}
     else
@@ -28,8 +28,8 @@ defmodule Dunda.Market do
           attrs = %{
             ticket_id: locked.id,
             seller_id: seller_id,
-            asking_price_kes: asking_price,
-            face_value_kes: locked.price_kes,
+            asking_price_cents: asking_price_cents,
+            face_value_cents: locked.price_cents,
             status: "active"
           }
 
@@ -172,7 +172,7 @@ defmodule Dunda.Market do
       listing.status != "active" ->
         Repo.rollback(:listing_not_active)
 
-      is_nil(listing.face_value_kes) ->
+      is_nil(listing.face_value_cents) ->
         Repo.rollback(:face_value_missing)
 
       listing.ticket.user_id == buyer_id ->
@@ -192,7 +192,7 @@ defmodule Dunda.Market do
 
         attrs = %{
           merchant_reference: resale_reference(idempotency_key),
-          amount_cents: listing.asking_price_kes * 100,
+          amount_cents: listing.asking_price_cents,
           currency: event.currency || "KES",
           quantity: 1,
           phone_encrypted: phone,
@@ -258,7 +258,7 @@ defmodule Dunda.Market do
                 order_id: order.id,
                 tier_id: ticket.tier_id,
                 tier_label: ticket.tier_label,
-                price_kes: ticket.price_kes,
+                price_cents: ticket.price_cents,
                 status: "valid",
                 jwt: nil,
                 transferred_from_user_id: ticket.user_id,
@@ -305,39 +305,48 @@ defmodule Dunda.Market do
 
           case Repo.transaction(multi) do
             {:ok, %{listing: sold_listing}} ->
-              case Dunda.Ledger.record_transfer(%{
-                     from_account: "resale:#{listing.id}:buyer",
-                     to_account: "user:#{ticket.user_id}:payable",
-                     amount_cents: order.amount_cents,
-                     reference: "resale:#{listing.id}:seller-credit"
-                   }) do
-                {:ok, _transfer} ->
-                  if confirmed_pending? do
-                    case order
-                         |> Order.status_changeset(%{status: "completed"})
-                         |> Repo.update() do
-                      {:ok, _} -> :ok
-                      {:error, changeset} -> Repo.rollback(changeset)
-                    end
-                  end
+              settlement =
+                Dunda.Checkout.Journal.post!(
+                  "resale-settlement:#{order.id}",
+                  order.currency,
+                  [
+                    {"provider_clearing", :debit, order.amount_cents},
+                    {"seller_payable", :credit, order.amount_cents}
+                  ],
+                  %{
+                    resale_listing_id: listing.id,
+                    order_id: order.id,
+                    payer_user_id: order.user_id,
+                    beneficiary_user_id: ticket.user_id,
+                    event_id: ticket.event_id
+                  }
+                )
 
-                  _ =
-                    Dunda.Audit.record(%{
-                      action: "resale.transfer_completed",
-                      resource_type: "resale_listing",
-                      resource_id: listing.id,
-                      metadata: %{
-                        order_id: order.id,
-                        buyer_id: order.user_id,
-                        seller_id: ticket.user_id
-                      }
-                    })
+              _payable =
+                Dunda.Checkout.Payables.create_seller!(settlement, order, ticket.user_id)
 
-                  sold_listing
-
-                {:error, reason} ->
-                  Repo.rollback(reason)
+              if confirmed_pending? do
+                case order
+                     |> Order.status_changeset(%{status: "completed"})
+                     |> Repo.update() do
+                  {:ok, _} -> :ok
+                  {:error, changeset} -> Repo.rollback(changeset)
+                end
               end
+
+              _ =
+                Dunda.Audit.record(%{
+                  action: "resale.transfer_completed",
+                  resource_type: "resale_listing",
+                  resource_id: listing.id,
+                  metadata: %{
+                    order_id: order.id,
+                    buyer_id: order.user_id,
+                    seller_id: ticket.user_id
+                  }
+                })
+
+              sold_listing
 
             {:error, _operation, reason, _changes} ->
               Repo.rollback(reason)

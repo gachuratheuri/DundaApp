@@ -105,6 +105,17 @@ defmodule Dunda.Workers.OutboxDispatcherWorker do
     end
   end
 
+  defp dispatch(%OutboxEvent{event_type: "payment_reconciliation_requested"} = event, now) do
+    case Dunda.Workers.PaymentReconciliationWorker.new(%{
+           "payment_intent_id" => event.aggregate_id,
+           "outbox_event_id" => event.id
+         })
+         |> Oban.insert() do
+      {:ok, _job} -> publish!(event, now)
+      {:error, reason} -> Repo.rollback({:outbox_dispatch_failed, reason})
+    end
+  end
+
   defp dispatch(%OutboxEvent{event_type: "inventory_projection_changed"} = event, now) do
     case Dunda.Workers.InventoryProjectionWorker.new(%{
            "inventory_pool_id" => event.aggregate_id,
@@ -134,4 +145,14 @@ defmodule Dunda.Workers.OutboxDispatcherWorker do
           attempts: event.attempts + 1
         })
       )
+
+  defp publish!(event, now) do
+    Repo.update!(
+      OutboxEvent.changeset(event, %{
+        status: "published",
+        published_at: now,
+        attempts: event.attempts + 1
+      })
+    )
+  end
 end

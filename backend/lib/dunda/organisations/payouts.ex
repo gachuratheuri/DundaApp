@@ -1,11 +1,11 @@
 defmodule Dunda.Organisations.Payouts do
   @moduledoc "Idempotent payout-attempt persistence; provider acceptance is not settlement."
 
-  import Ecto.Query, only: [from: 2]
+  import Ecto.Query, only: [dynamic: 2, from: 2]
 
   alias Dunda.Organisations.Payout
   alias Dunda.Organisations.{PayoutBatch, PayoutItem}
-  alias Dunda.Billing.Order
+  alias Dunda.Checkout.PayableEntry
   alias Dunda.Repo
 
   @submission_timeout_seconds 900
@@ -96,16 +96,35 @@ defmodule Dunda.Organisations.Payouts do
     end
   end
 
-  @doc "Selects eligible orders once and attaches them to one payout batch."
+  @doc "Selects eligible organiser subledger entries once and attaches them to one payout batch."
   @spec create_batch(integer(), DateTime.t(), DateTime.t()) ::
           {:ok, PayoutBatch.t()} | {:error, term()}
   def create_batch(organisation_id, period_start, period_end) do
+    create_beneficiary_batch(:organisation, organisation_id, period_start, period_end)
+  end
+
+  @doc "Selects eligible resale-seller subledger entries for one user."
+  def create_seller_batch(user_id, period_start, period_end) do
+    create_beneficiary_batch(:user, user_id, period_start, period_end)
+  end
+
+  def payable_user_ids do
+    Repo.all(
+      from p in PayableEntry,
+        where:
+          not is_nil(p.beneficiary_user_id) and p.status == "payable" and
+            p.amount_cents > p.refunded_cents,
+        distinct: true,
+        select: p.beneficiary_user_id
+    )
+  end
+
+  defp create_beneficiary_batch(type, beneficiary_id, period_start, period_end) do
     Repo.transaction(fn ->
       case Repo.one(
              from b in PayoutBatch,
-               where:
-                 b.organisation_id == ^organisation_id and
-                   b.status in ["pending", "submitting", "submitted"],
+               where: ^beneficiary_batch_query(type, beneficiary_id),
+               where: b.status in ["pending", "submitting", "submitted"],
                order_by: [desc: b.inserted_at],
                limit: 1,
                lock: "FOR UPDATE"
@@ -114,44 +133,52 @@ defmodule Dunda.Organisations.Payouts do
           existing
 
         nil ->
-          orders =
+          payables =
             Repo.all(
-              from o in Order,
-                where:
-                  o.organisation_id == ^organisation_id and o.kind == "primary" and
-                    o.status in ["completed", "partially_refunded"] and
-                    o.payout_status == "unpaid",
-                order_by: [asc: o.id],
+              from p in PayableEntry,
+                where: ^beneficiary_payable_query(type, beneficiary_id),
+                where: p.status == "payable" and p.amount_cents > p.refunded_cents,
+                order_by: [asc: p.id],
                 lock: "FOR UPDATE SKIP LOCKED"
             )
-            |> Enum.filter(&(net_amount(&1) > 0))
 
-          if orders == [] do
+          if payables == [] do
             Repo.rollback(:nothing_payable)
           else
-            amount = Enum.reduce(orders, 0, &(net_amount(&1) + &2))
+            currencies = payables |> Enum.map(& &1.currency) |> Enum.uniq()
+            if length(currencies) != 1, do: Repo.rollback(:mixed_payout_currencies)
+            currency = hd(currencies)
+            amount = Enum.reduce(payables, 0, &(PayableEntry.available_cents(&1) + &2))
 
             key =
-              "payout:#{organisation_id}:" <>
+              "payout:#{type}:#{beneficiary_id}:" <>
                 Base.url_encode64(
-                  :crypto.hash(:sha256, Enum.map(orders, &to_string(&1.id)) |> Enum.join(",")),
+                  :crypto.hash(:sha256, Enum.map(payables, &to_string(&1.id)) |> Enum.join(",")),
                   padding: false
                 )
 
+            beneficiary_attrs =
+              case type do
+                :organisation -> %{organisation_id: beneficiary_id}
+                :user -> %{beneficiary_user_id: beneficiary_id}
+              end
+
             with {:ok, batch} <-
                    %PayoutBatch{}
-                   |> PayoutBatch.changeset(%{
-                     organisation_id: organisation_id,
-                     amount_cents: amount,
-                     currency: "KES",
-                     idempotency_key: key,
-                     period_start: period_start,
-                     period_end: period_end
-                   })
+                   |> PayoutBatch.changeset(
+                     %{
+                       amount_cents: amount,
+                       currency: currency,
+                       idempotency_key: key,
+                       period_start: period_start,
+                       period_end: period_end
+                     }
+                     |> Map.merge(beneficiary_attrs)
+                   )
                    |> Repo.insert(),
-                 {:ok, _} <- insert_items(batch, orders),
-                 {count, _} <- mark_orders_queued(orders) do
-              if count != length(orders), do: Repo.rollback(:payout_selection_race)
+                 {:ok, _} <- insert_items(batch, payables),
+                 {count, _} <- mark_payables_queued(payables) do
+              if count != length(payables), do: Repo.rollback(:payout_selection_race)
 
               _ =
                 Dunda.Audit.record(%{
@@ -159,9 +186,10 @@ defmodule Dunda.Organisations.Payouts do
                   resource_type: "payout_batch",
                   resource_id: batch.id,
                   metadata: %{
-                    organisation_id: organisation_id,
+                    beneficiary_type: type,
+                    beneficiary_id: beneficiary_id,
                     amount_cents: amount,
-                    item_count: length(orders)
+                    item_count: length(payables)
                   }
                 })
 
@@ -185,6 +213,17 @@ defmodule Dunda.Organisations.Payouts do
       from b in PayoutBatch,
         where:
           b.organisation_id == ^organisation_id and
+            b.status in ["pending", "submitting", "submitted"],
+        order_by: [desc: b.inserted_at],
+        limit: 1
+    )
+  end
+
+  def pending_seller_batch_for(user_id) do
+    Repo.one(
+      from b in PayoutBatch,
+        where:
+          b.beneficiary_user_id == ^user_id and
             b.status in ["pending", "submitting", "submitted"],
         order_by: [desc: b.inserted_at],
         limit: 1
@@ -295,50 +334,106 @@ defmodule Dunda.Organisations.Payouts do
         to_string(result_code) == "0" ->
           now = DateTime.utc_now() |> DateTime.truncate(:second)
 
-          item_order_ids =
+          payable_ids =
             Repo.all(
-              from i in PayoutItem, where: i.payout_batch_id == ^batch.id, select: i.order_id
+              from i in PayoutItem,
+                where: i.payout_batch_id == ^batch.id and not is_nil(i.payable_entry_id),
+                select: i.payable_entry_id
             )
 
-          {_, _} =
-            from(i in PayoutItem,
-              where: i.payout_batch_id == ^batch.id,
-              update: [set: [status: "paid"]]
+          payables =
+            Repo.all(
+              from p in PayableEntry,
+                where: p.id in ^payable_ids,
+                order_by: [asc: p.id],
+                lock: "FOR UPDATE"
             )
-            |> Repo.update_all([])
 
-          {_, _} =
-            from(o in Order,
-              where: o.id in ^item_order_ids,
-              update: [set: [payout_status: "paid", updated_at: ^now]]
-            )
-            |> Repo.update_all([])
+          payable_state_consistent? =
+            length(payable_ids) == length(payables) and
+              Enum.all?(payables, &(&1.status == "queued"))
 
-          case batch
-               |> PayoutBatch.changeset(%{status: "paid", b2c_receipt: receipt, paid_at: now})
-               |> Repo.update() do
-            {:ok, paid} ->
-              _ =
-                Dunda.Audit.record(%{
-                  action: "payout.batch_paid",
-                  resource_type: "payout_batch",
-                  resource_id: batch.id,
-                  metadata: %{result_code: result_code}
-                })
+          if payable_state_consistent? do
+            {item_count, _} =
+              from(i in PayoutItem,
+                where: i.payout_batch_id == ^batch.id and i.status == "queued",
+                update: [set: [status: "paid"]]
+              )
+              |> Repo.update_all([])
 
-              paid
+            {payable_count, _} =
+              from(p in PayableEntry,
+                where: p.id in ^payable_ids and p.status == "queued",
+                update: [set: [status: "paid", paid_at: ^now, updated_at: ^now]]
+              )
+              |> Repo.update_all([])
 
-            {:error, changeset} ->
-              Repo.rollback(changeset)
+            if item_count != length(payable_ids) or payable_count != length(payable_ids),
+              do: Repo.rollback(:payout_finalisation_race)
+
+            case batch
+                 |> PayoutBatch.changeset(%{
+                   status: "paid",
+                   b2c_receipt: receipt,
+                   paid_at: now
+                 })
+                 |> Repo.update() do
+              {:ok, paid} ->
+                _ =
+                  Dunda.Audit.record(%{
+                    action: "payout.batch_paid",
+                    resource_type: "payout_batch",
+                    resource_id: batch.id,
+                    metadata: %{result_code: result_code}
+                  })
+
+                paid
+
+              {:error, changeset} ->
+                Repo.rollback(changeset)
+            end
+          else
+            reason = "provider_success_conflicts_with_refunded_or_nonqueued_payable"
+
+            {_, _} =
+              from(i in PayoutItem,
+                where: i.payout_batch_id == ^batch.id and i.status == "queued",
+                update: [set: [status: "manual_review", failure_reason: ^reason]]
+              )
+              |> Repo.update_all([])
+
+            case batch
+                 |> PayoutBatch.changeset(%{
+                   status: "manual_review",
+                   b2c_receipt: receipt,
+                   failure_reason: reason
+                 })
+                 |> Repo.update() do
+              {:ok, reviewed} ->
+                _ =
+                  Dunda.Audit.record(%{
+                    action: "payout.batch_manual_review",
+                    resource_type: "payout_batch",
+                    resource_id: batch.id,
+                    metadata: %{reason: reason, result_code: result_code}
+                  })
+
+                reviewed
+
+              {:error, changeset} ->
+                Repo.rollback(changeset)
+            end
           end
 
         true ->
           failure_reason = "provider_result_#{result_code}"
           now = DateTime.utc_now() |> DateTime.truncate(:second)
 
-          item_order_ids =
+          payable_ids =
             Repo.all(
-              from i in PayoutItem, where: i.payout_batch_id == ^batch.id, select: i.order_id
+              from i in PayoutItem,
+                where: i.payout_batch_id == ^batch.id and not is_nil(i.payable_entry_id),
+                select: i.payable_entry_id
             )
 
           {_, _} =
@@ -349,9 +444,9 @@ defmodule Dunda.Organisations.Payouts do
             |> Repo.update_all([])
 
           {_, _} =
-            from(o in Order,
-              where: o.id in ^item_order_ids,
-              update: [set: [payout_status: "unpaid", updated_at: ^now]]
+            from(p in PayableEntry,
+              where: p.id in ^payable_ids and p.status == "queued",
+              update: [set: [status: "payable", updated_at: ^now]]
             )
             |> Repo.update_all([])
 
@@ -380,14 +475,14 @@ defmodule Dunda.Organisations.Payouts do
     end
   end
 
-  defp insert_items(batch, orders) do
-    Enum.reduce_while(orders, {:ok, []}, fn order, {:ok, acc} ->
+  defp insert_items(batch, payables) do
+    Enum.reduce_while(payables, {:ok, []}, fn payable, {:ok, acc} ->
       case %PayoutItem{}
            |> PayoutItem.changeset(%{
              payout_batch_id: batch.id,
-             order_id: order.id,
-             amount_cents: net_amount(order),
-             currency: order.currency
+             payable_entry_id: payable.id,
+             amount_cents: PayableEntry.available_cents(payable),
+             currency: payable.currency
            })
            |> Repo.insert() do
         {:ok, item} -> {:cont, {:ok, [item | acc]}}
@@ -396,16 +491,24 @@ defmodule Dunda.Organisations.Payouts do
     end)
   end
 
-  defp mark_orders_queued(orders) do
-    ids = Enum.map(orders, & &1.id)
+  defp mark_payables_queued(payables) do
+    ids = Enum.map(payables, & &1.id)
 
-    from(o in Order, where: o.id in ^ids and o.payout_status == "unpaid")
-    |> Repo.update_all(set: [payout_status: "queued", updated_at: DateTime.utc_now()])
+    from(p in PayableEntry, where: p.id in ^ids and p.status == "payable")
+    |> Repo.update_all(set: [status: "queued", updated_at: DateTime.utc_now()])
   end
 
-  defp net_amount(%Order{amount_cents: amount, refunded_amount_cents: refunded}) do
-    max(amount - (refunded || 0), 0)
-  end
+  defp beneficiary_batch_query(:organisation, id),
+    do: dynamic([b], b.organisation_id == ^id)
+
+  defp beneficiary_batch_query(:user, id),
+    do: dynamic([b], b.beneficiary_user_id == ^id)
+
+  defp beneficiary_payable_query(:organisation, id),
+    do: dynamic([p], p.organisation_id == ^id)
+
+  defp beneficiary_payable_query(:user, id),
+    do: dynamic([p], p.beneficiary_user_id == ^id)
 
   defp now, do: DateTime.utc_now() |> DateTime.truncate(:second)
 

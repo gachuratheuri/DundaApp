@@ -3,7 +3,7 @@ defmodule Dunda.Security.WebhookTest do
   Tests `Dunda.Security.Webhook.valid?/2` (fail-closed shared-secret
   verification for provider callbacks) — previously untested per the Phase
   12 gap audit despite gating two live webhook routes
-  (`DundaWeb.MpesaController`, `DundaWeb.IpnController`).
+  (provider-event and payout-result controllers).
   """
   # async: false — one test mutates the global :webhook_secrets Application
   # env (restored via on_exit); avoid racing other concurrently running
@@ -63,10 +63,14 @@ defmodule Dunda.Security.WebhookTest do
   end
 
   test "accepts secret or token supplied via query parameters for callbacks" do
-    conn_param = conn(:post, "/api/mpesa/b2c/result?secret=#{@daraja_secret}", %{"secret" => @daraja_secret})
+    conn_param =
+      conn(:post, "/api/mpesa/b2c/result?secret=#{@daraja_secret}", %{"secret" => @daraja_secret})
+
     assert Webhook.valid?(conn_param, :daraja)
 
-    conn_token = conn(:post, "/api/mpesa/b2c/result?token=#{@daraja_secret}", %{"token" => @daraja_secret})
+    conn_token =
+      conn(:post, "/api/mpesa/b2c/result?token=#{@daraja_secret}", %{"token" => @daraja_secret})
+
     assert Webhook.valid?(conn_token, :daraja)
   end
 end

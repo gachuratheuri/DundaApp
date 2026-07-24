@@ -16,6 +16,7 @@ defmodule Dunda.Workers.PayoutWorker do
   alias Dunda.Organisations
   alias Dunda.Organisations.Payouts
   alias Dunda.Payments.Daraja
+  alias Dunda.{Accounts, Repo}
 
   @impl Oban.Worker
   def perform(_job) do
@@ -23,16 +24,46 @@ defmodule Dunda.Workers.PayoutWorker do
       {:cancel, :phase_0_containment}
     else
       Organisations.list_organisations()
-      |> Enum.each(&settle/1)
+      |> Enum.each(&settle_organisation/1)
+
+      Payouts.payable_user_ids()
+      |> Enum.each(&settle_seller/1)
 
       :ok
     end
   end
 
-  defp settle(%{id: organisation_id, mpesa_phone_encrypted: phone}) when is_binary(phone) do
+  defp settle_organisation(%{id: organisation_id, mpesa_phone_encrypted: phone})
+       when is_binary(phone) do
+    settle_beneficiary(
+      phone,
+      "organisation:#{organisation_id}",
+      &Payouts.create_batch(organisation_id, &1, &2)
+    )
+  end
+
+  defp settle_organisation(%{id: organisation_id}),
+    do:
+      Logger.warning("Payout organisation #{organisation_id} has no encrypted payout destination")
+
+  defp settle_seller(user_id) do
+    case Repo.get(Accounts.User, user_id) do
+      %{phone_msisdn: phone} when is_binary(phone) ->
+        settle_beneficiary(
+          phone,
+          "seller:#{user_id}",
+          &Payouts.create_seller_batch(user_id, &1, &2)
+        )
+
+      _ ->
+        Logger.warning("Resale seller #{user_id} has no verified encrypted payout destination")
+    end
+  end
+
+  defp settle_beneficiary(phone, beneficiary_label, create_batch) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
-    case Payouts.create_batch(organisation_id, now, now) do
+    case create_batch.(now, now) do
       {:ok, %{status: "submitted"} = batch} ->
         Logger.info(
           "Payout batch #{batch.id} already submitted; awaiting verified provider result"
@@ -67,14 +98,10 @@ defmodule Dunda.Workers.PayoutWorker do
 
       {:error, reason} ->
         Logger.warning(
-          "Payout batch for organisation #{organisation_id} retained for reconciliation: #{inspect(reason)}"
+          "Payout batch for #{beneficiary_label} retained for reconciliation: #{inspect(reason)}"
         )
     end
   end
-
-  defp settle(%{id: organisation_id}),
-    do:
-      Logger.warning("Payout organisation #{organisation_id} has no encrypted payout destination")
 
   defp submit(phone, batch) do
     if rem(batch.amount_cents, 100) != 0 do

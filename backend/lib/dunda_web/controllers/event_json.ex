@@ -2,8 +2,7 @@ defmodule DundaWeb.EventJSON do
   @moduledoc """
   Serialises events into the shape consumed by the app's `DundaEvent`.
 
-  Field-name caveat: the app's `price_kes` fields are denominated in *cents*
-  (it divides by 100 for display), so `price_cents` passes through unchanged.
+  Monetary values use explicit integer-cent field names.
   """
 
   alias Dunda.Events.Event
@@ -23,7 +22,7 @@ defmodule DundaWeb.EventJSON do
       name: event.name,
       venue: event.venue,
       starts_at: DateTime.to_iso8601(event.starts_at),
-      price_kes: headline_price_cents(tiers, event),
+      price_cents: headline_price_cents(tiers, event),
       remaining: remaining,
       sold_out: remaining == 0,
       tier_label: (tiers && hd(tiers).label) || "GENERAL",
@@ -50,7 +49,7 @@ defmodule DundaWeb.EventJSON do
       %{
         id: to_string(t.id),
         label: String.upcase(t.name),
-        price_kes: t.price_cents,
+        price_cents: t.price_cents,
         sold: max(t.capacity - live_remaining, 0),
         total: t.capacity,
         remaining: live_remaining,
@@ -67,7 +66,7 @@ defmodule DundaWeb.EventJSON do
   defp headline_price_cents(tiers, event) do
     tiers
     |> Enum.filter(&(&1.status == "on_sale" and &1.remaining > 0))
-    |> Enum.map(& &1.price_kes)
+    |> Enum.map(& &1.price_cents)
     |> Enum.min(fn -> event.price_cents end)
   end
 end

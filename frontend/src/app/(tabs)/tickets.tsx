@@ -27,7 +27,7 @@ interface TicketRecord {
   date_label: string;
   tier: string;
   status: 'active' | 'pending' | 'attended' | 'resale_pending';
-  price_kes?: number;
+  face_value_cents?: number;
   position?: number;
   probability?: string;
   is_vip?: boolean;
@@ -242,7 +242,7 @@ export default function TicketsScreen() {
                   {activeTab === 'resale' && (
                     <View style={styles.resaleDetails}>
                       <Text style={styles.resalePriceText}>
-                        Listed Price: KSh {((ticket.price_kes || 0) / 100).toLocaleString('en-KE')}/=
+                        Listed Price: KSh {((ticket.face_value_cents || 0) / 100).toLocaleString('en-KE')}/=
                       </Text>
                       <View style={styles.resaleBadge}>
                         <Text style={styles.resaleBadgeText}>LISTING: PENDING</Text>

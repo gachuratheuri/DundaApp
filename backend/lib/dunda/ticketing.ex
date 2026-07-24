@@ -75,7 +75,7 @@ defmodule Dunda.Ticketing do
   def issue_tickets(order, event, user, count, opts \\ []) do
     tier = Keyword.get(opts, :tier)
     transaction_id = Keyword.get(opts, :transaction_id)
-    price = face_value_kes(tier, order, event, count)
+    price_cents = face_value_cents(tier, order, event, count)
 
     tier_label =
       if tier,
@@ -97,7 +97,7 @@ defmodule Dunda.Ticketing do
             transaction_id: transaction_id,
             fulfillment_key: fulfillment_key(order, transaction_id, index, ticket_id),
             tier_label: tier_label,
-            price_kes: price,
+            price_cents: price_cents,
             status: "valid",
             jwt: nil
           })
@@ -124,18 +124,15 @@ defmodule Dunda.Ticketing do
     end
   end
 
-  # Face value in whole KSh (the unit `tickets.price_kes` and the resale price
-  # cap are denominated in).
-  defp face_value_kes(%TicketTier{price_cents: cents}, _order, _event, _count),
-    do: div(cents, 100)
+  defp face_value_cents(%TicketTier{price_cents: cents}, _order, _event, _count), do: cents
 
-  defp face_value_kes(nil, order, _event, count) when not is_nil(order),
-    do: div(order.amount_cents, 100 * count)
+  defp face_value_cents(nil, order, _event, count) when not is_nil(order),
+    do: div(order.amount_cents, count)
 
-  defp face_value_kes(nil, nil, %{price_cents: cents}, _count) when is_integer(cents),
-    do: div(cents, 100)
+  defp face_value_cents(nil, nil, %{price_cents: cents}, _count) when is_integer(cents),
+    do: cents
 
-  defp face_value_kes(nil, nil, _event, _count), do: 0
+  defp face_value_cents(nil, nil, _event, _count), do: 0
 
   @doc "Whether tickets were already issued for an M-Pesa `transaction_id`."
   @spec fulfilled?(String.t()) :: boolean()

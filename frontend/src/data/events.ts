@@ -14,7 +14,7 @@ export const MOCK_EVENTS: AstralEvent[] = [
     name: 'Blankets & Wine Nairobi',
     venue: 'Ngong Racecourse',
     starts_at: new Date(now + DAY_MS * 4).toISOString(),
-    price_kes: 200_000,
+    price_cents: 200_000,
     tier_label: 'GENERAL',
     is_vip: false,
     remaining: 312,
@@ -23,7 +23,7 @@ export const MOCK_EVENTS: AstralEvent[] = [
     genre_tag: 'Live Music',
     description: 'The most beloved outdoor music experience in Nairobi returns. Sip wine, spread your blanket, and lose yourself in world-class performances under the Nairobi sky. Curated lineups, artisan food, and a community of music lovers.',
     tiers: [
-      { label: 'GENERAL ADMISSION', price_kes: 200000, sold: 1800, total: 2112, remaining: 312 },
+      { label: 'GENERAL ADMISSION', price_cents: 200000, sold: 1800, total: 2112, remaining: 312 },
     ]
   },
   {
@@ -31,7 +31,7 @@ export const MOCK_EVENTS: AstralEvent[] = [
     name: 'Carnivore Music Festival',
     venue: 'Carnivore Grounds',
     starts_at: new Date(now + DAY_MS * 12).toISOString(),
-    price_kes: 500_000,
+    price_cents: 500_000,
     tier_label: 'VIP',
     is_vip: true,
     remaining: 14,
@@ -40,8 +40,8 @@ export const MOCK_EVENTS: AstralEvent[] = [
     genre_tag: 'Festival',
     description: 'Experience a massive three-day celebration of African music at the iconic Carnivore Grounds. Featuring top artists from across the continent, multiple stages, and the famous Carnivore hospitality.',
     tiers: [
-      { label: 'REGULAR', price_kes: 250000, sold: 5000, total: 5000, remaining: 0 },
-      { label: 'VIP', price_kes: 500000, sold: 486, total: 500, remaining: 14, vip: true },
+      { label: 'REGULAR', price_cents: 250000, sold: 5000, total: 5000, remaining: 0 },
+      { label: 'VIP', price_cents: 500000, sold: 486, total: 500, remaining: 14, vip: true },
     ]
   },
   {
@@ -49,7 +49,7 @@ export const MOCK_EVENTS: AstralEvent[] = [
     name: 'Saturday Night Takeover',
     venue: 'The Alchemist',
     starts_at: new Date(now + 1000 * 60 * 60 * 4).toISOString(), // Tonight (4 hours from now)
-    price_kes: 50_000, // Derived from MIN(price WHERE available > 0) -> 500 KES
+    price_cents: 50_000, // Derived from MIN(price WHERE available > 0) -> 500 KES
     tier_label: 'GENERAL ADMISSION',
     is_vip: false,
     remaining: 183, // 20 + 160 + 3
@@ -58,9 +58,9 @@ export const MOCK_EVENTS: AstralEvent[] = [
     genre_tag: 'Club Night',
     description: 'An electrifying club night featuring Nairobi\'s top DJs mixing the best of Amapiano, Afrobeats, and House. The Alchemist transforms into a glowing utopia for those who never want the night to end.',
     tiers: [
-      { label: 'GENERAL ADMISSION', price_kes: 50000, sold: 180, total: 200, remaining: 20 },
-      { label: 'VIP FRONT LAWN', price_kes: 250000, sold: 40, total: 200, remaining: 160, vip: true },
-      { label: 'PLATINUM TABLE', price_kes: 500000, sold: 47, total: 50, remaining: 3, vip: true },
+      { label: 'GENERAL ADMISSION', price_cents: 50000, sold: 180, total: 200, remaining: 20 },
+      { label: 'VIP FRONT LAWN', price_cents: 250000, sold: 40, total: 200, remaining: 160, vip: true },
+      { label: 'PLATINUM TABLE', price_cents: 500000, sold: 47, total: 50, remaining: 3, vip: true },
     ]
   },
   {
@@ -68,7 +68,7 @@ export const MOCK_EVENTS: AstralEvent[] = [
     name: 'Afrobeats Underground',
     venue: 'KICC Rooftop',
     starts_at: new Date(now + DAY_MS * 2).toISOString(),
-    price_kes: 150_000,
+    price_cents: 150_000,
     tier_label: 'GENERAL',
     is_vip: false,
     remaining: 8,
@@ -77,7 +77,7 @@ export const MOCK_EVENTS: AstralEvent[] = [
     genre_tag: 'Afrobeats',
     description: 'Elevate your vibe at the KICC Rooftop. A premium underground Afrobeats experience high above the city. Stunning skyline views and infectious rhythms all night.',
     tiers: [
-      { label: 'GENERAL', price_kes: 150000, sold: 392, total: 400, remaining: 8 },
+      { label: 'GENERAL', price_cents: 150000, sold: 392, total: 400, remaining: 8 },
     ]
   },
   {
@@ -85,7 +85,7 @@ export const MOCK_EVENTS: AstralEvent[] = [
     name: 'Jazz in the Garden',
     venue: 'Alliance Française',
     starts_at: new Date(now + DAY_MS * 6).toISOString(),
-    price_kes: 350_000,
+    price_cents: 350_000,
     tier_label: 'VIP',
     is_vip: true,
     remaining: 50,
@@ -94,7 +94,7 @@ export const MOCK_EVENTS: AstralEvent[] = [
     genre_tag: 'Jazz',
     description: 'An elegant afternoon of smooth jazz, contemporary art, and fine dining at Alliance Française. Perfect for a relaxing weekend with soothing saxophone melodies.',
     tiers: [
-      { label: 'VIP', price_kes: 350000, sold: 150, total: 200, remaining: 50, vip: true },
+      { label: 'VIP', price_cents: 350000, sold: 150, total: 200, remaining: 50, vip: true },
     ]
   },
   {
@@ -102,7 +102,7 @@ export const MOCK_EVENTS: AstralEvent[] = [
     name: 'Laugh Factory Nairobi',
     venue: 'Uhuru Gardens',
     starts_at: new Date(now + DAY_MS * 1).toISOString(),
-    price_kes: 120_000,
+    price_cents: 120_000,
     tier_label: 'GENERAL',
     is_vip: false,
     remaining: 180,
@@ -111,7 +111,7 @@ export const MOCK_EVENTS: AstralEvent[] = [
     genre_tag: 'Comedy',
     description: 'Get ready for non-stop laughter as East Africa\'s funniest stand-up comedians take the stage. Food trucks, drinks, and hilarious punchlines in an open-air setting.',
     tiers: [
-      { label: 'GENERAL', price_kes: 120000, sold: 820, total: 1000, remaining: 180 },
+      { label: 'GENERAL', price_cents: 120000, sold: 820, total: 1000, remaining: 180 },
     ]
   },
   {
@@ -119,7 +119,7 @@ export const MOCK_EVENTS: AstralEvent[] = [
     name: 'Nairobi Contemporary Art Fair',
     venue: 'Kasarani Stadium',
     starts_at: new Date(now + DAY_MS * 18).toISOString(),
-    price_kes: 100_000,
+    price_cents: 100_000,
     tier_label: 'GENERAL',
     is_vip: false,
     remaining: 600,
@@ -128,7 +128,7 @@ export const MOCK_EVENTS: AstralEvent[] = [
     genre_tag: 'Art',
     description: 'Explore the vibrant creativity of the continent. A sprawling exhibition of modern African art, installations, and creative workshops.',
     tiers: [
-      { label: 'GENERAL', price_kes: 100000, sold: 1400, total: 2000, remaining: 600 },
+      { label: 'GENERAL', price_cents: 100000, sold: 1400, total: 2000, remaining: 600 },
     ]
   },
   {
@@ -136,7 +136,7 @@ export const MOCK_EVENTS: AstralEvent[] = [
     name: 'Tusker Safari Sevens',
     venue: 'K1 Klubhouse',
     starts_at: new Date(now + 1000 * 60 * 60 * 2).toISOString(), // Tonight (2 hours from now)
-    price_kes: 300_000,
+    price_cents: 300_000,
     tier_label: 'VIP',
     is_vip: true,
     remaining: 42,
@@ -145,7 +145,7 @@ export const MOCK_EVENTS: AstralEvent[] = [
     genre_tag: 'Sports',
     description: 'Catch the intense rugby sevens action broadcast live while enjoying chilled Tusker and great company at K1. The ultimate sports fan experience.',
     tiers: [
-      { label: 'VIP', price_kes: 300000, sold: 258, total: 300, remaining: 42, vip: true },
+      { label: 'VIP', price_cents: 300000, sold: 258, total: 300, remaining: 42, vip: true },
     ]
   },
 ];

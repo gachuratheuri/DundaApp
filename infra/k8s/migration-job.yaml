@@ -1,0 +1,54 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: dunda-migrate-REPLACE_WITH_REVISION
+  namespace: default
+  labels:
+    app: dunda-api
+    component: migration
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 900
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app: dunda-api
+        component: migration
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: migrate
+        image: dundaregistry.azurecr.io/dunda-api@sha256:REPLACE_WITH_SIGNED_DIGEST
+        imagePullPolicy: IfNotPresent
+        command: ["/app/bin/dunda", "eval", "Dunda.Release.migrate()"]
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
+        envFrom:
+        - configMapRef:
+            name: dunda-config
+        - secretRef:
+            name: dunda-secrets
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 1
+            memory: 512Mi
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir: {}

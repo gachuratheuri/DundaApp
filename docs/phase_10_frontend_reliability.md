@@ -27,7 +27,7 @@ restricted to the development profile.
   unavailable state until server data is revalidated.
 - Production event routes fetch by server ID and do not fall back to bundled
   mock events. Development-only demo data is visibly labelled.
-- Resale uses the server contract field `asking_price_kes`, derives the maximum
+- Resale uses the server contract field `asking_price_cents`, derives the maximum
   from the immutable server-provided face value, and rejects invalid prices
   before submission.
 - Private ticket routes are guarded by an access-token check. Organiser links
@@ -36,7 +36,7 @@ restricted to the development profile.
 
 ## Required backend/build contract
 
-The API must expose a rotating `/api/auth/refresh` endpoint returning a new
+The API exposes a rotating `/api/auth/refresh` endpoint returning a new
 short-lived access token and, where applicable, a rotated refresh token. Until
 that endpoint is deployed, the client deliberately fails closed and logs the
 user out on access-token expiry. EAS preview and production profiles must point

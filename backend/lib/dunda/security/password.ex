@@ -9,7 +9,7 @@ defmodule Dunda.Security.Password do
   """
 
   @algorithm "pbkdf2_sha256"
-  @iterations 210_000
+  @iterations 600_000
   @minimum_iterations 100_000
   @maximum_iterations 1_000_000
   @salt_bytes 16
@@ -51,6 +51,22 @@ defmodule Dunda.Security.Password do
   end
 
   def verify(_, _), do: false
+
+  @doc "Whether an encoded hash should be replaced after successful verification."
+  def needs_rehash?(encoded) when is_binary(encoded) do
+    case String.split(encoded, "$") do
+      [@algorithm, iterations_text, _salt, _digest] ->
+        case Integer.parse(iterations_text) do
+          {iterations, ""} -> iterations < @iterations
+          _ -> true
+        end
+
+      _ ->
+        true
+    end
+  end
+
+  def needs_rehash?(_), do: true
 
   @doc "Performs equivalent work when an account/hash is absent or malformed."
   @spec no_user_verify(String.t()) :: :ok

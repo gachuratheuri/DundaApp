@@ -118,6 +118,7 @@ defmodule DundaWeb.Router do
     # Auth
     post("/auth/register", AuthController, :register)
     post("/auth/login", AuthController, :login)
+    post("/auth/refresh", AuthController, :refresh)
     post("/auth/google", ContainmentController, :disabled)
     post("/auth/otp/send", ContainmentController, :disabled)
     post("/auth/otp/verify", ContainmentController, :disabled)
@@ -144,6 +145,7 @@ defmodule DundaWeb.Router do
   scope "/api", DundaWeb do
     pipe_through([:api, :api_auth])
 
+    post("/auth/logout", AuthController, :logout)
     get("/tickets", TicketController, :index)
     post("/tickets/:id/device-challenge", TicketCredentialController, :challenge)
     post("/tickets/:id/bind-device", TicketCredentialController, :bind)

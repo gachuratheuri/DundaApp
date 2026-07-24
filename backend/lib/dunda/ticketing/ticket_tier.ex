@@ -2,10 +2,10 @@ defmodule Dunda.Ticketing.TicketTier do
   @moduledoc """
   A purchasable access level within an event (Regular, VIP, Early Bird, …).
 
-  The tier is the unit of inventory: `capacity` is authoritative and the live
-  remaining count is held in Redis at `inventory:<tier_id>` (see
-  `Dunda.Ticketing.InventoryPoolServer`). `remaining` is populated at read time
-  and is never persisted.
+  The tier is the unit of inventory. PostgreSQL `inventory_pools` rows are the
+  authority for capacity, reservations, and sales; Redis may contain only a
+  disposable remaining-count projection. `remaining` is populated from that
+  authoritative state at read time and is never persisted on this schema.
   """
   use Ecto.Schema
   import Ecto.Changeset
@@ -24,7 +24,7 @@ defmodule Dunda.Ticketing.TicketTier do
     field :status, :string, default: "on_sale"
     field :max_per_order, :integer, default: 10
 
-    # Populated from Redis at read time; not persisted.
+    # Populated from authoritative inventory state at read time; not persisted.
     field :remaining, :integer, virtual: true
 
     belongs_to :event, Dunda.Events.Event

@@ -29,11 +29,9 @@ defmodule Dunda.Application do
     #  1. Vault     — keys available before any Ecto schema initialises
     #  2-3. Repos   — write path, then read replica
     #  4. Redix     — Redis pool before any inventory process
-    #  5. Cluster   — join the cluster BEFORE Horde starts
-    #  6-7. Horde   — registry must exist before the dynamic supervisor registers
-    #  8-9. Payments — CRI routing registry + state-machine supervisor
-    #  10. Endpoint — accept HTTP only after all data deps are healthy
-    #  11. Oban     — background jobs last
+    #  5. Cluster   — establish distributed PubSub node discovery
+    #  6. Endpoint  — accept HTTP only after all data deps are healthy
+    #  7. Oban      — durable checkout/payment workers last
     children =
       [
         Dunda.Vault,
@@ -41,12 +39,8 @@ defmodule Dunda.Application do
         Dunda.ReadRepo,
         Dunda.Observability,
         {Redix, Application.get_env(:dunda, :redis, []) |> Keyword.put(:name, :redix)},
-        {Cluster.Supervisor, [topologies, [name: Dunda.ClusterSupervisor]]},
-        {Horde.Registry, [name: Dunda.InventoryRegistry, keys: :unique, members: :auto]},
-        {Horde.DynamicSupervisor,
-         [name: Dunda.InventorySupervisor, strategy: :one_for_one, members: :auto]}
+        {Cluster.Supervisor, [topologies, [name: Dunda.ClusterSupervisor]]}
       ] ++
-        Dunda.Payments.child_specs() ++
         [
           # Scraper Bloom pre-filter — must exist before Oban runs ingest jobs.
           Dunda.Scraper.Dedup,

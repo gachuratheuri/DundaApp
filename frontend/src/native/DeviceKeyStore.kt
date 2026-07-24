@@ -19,14 +19,19 @@ class DeviceKeyStore(private val alias: String = "dunda-ticket-device-v2") {
     }
 
     private fun loadOrCreate(): KeyPair {
-        val generator = KeyPairGenerator.getInstance("Ed25519", "AndroidKeyStore")
-        return try {
-            generator.initialize(KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY).build())
-            generator.generateKeyPair()
-        } catch (_: Exception) {
-            val store = java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-            val entry = store.getEntry(alias, null) as? java.security.KeyStore.PrivateKeyEntry
-            requireNotNull(entry) { "unable to provision device signing key" }.let { KeyPair(it.certificate.publicKey, it.privateKey) }
+        val store = java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        val existing = store.getEntry(alias, null) as? java.security.KeyStore.PrivateKeyEntry
+        if (existing != null) {
+            return KeyPair(existing.certificate.publicKey, existing.privateKey)
         }
+
+        val generator = KeyPairGenerator.getInstance("Ed25519", "AndroidKeyStore")
+        generator.initialize(
+            KeyGenParameterSpec.Builder(
+                alias,
+                KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY,
+            ).build(),
+        )
+        return generator.generateKeyPair()
     }
 }

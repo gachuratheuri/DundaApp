@@ -31,7 +31,20 @@ defmodule Dunda.Accounts do
       when is_binary(email) and is_binary(password) do
     user = get_user_by_email(email)
 
-    if User.valid_password?(user || %User{}, password), do: user, else: nil
+    if User.valid_password?(user || %User{}, password),
+      do: maybe_rehash_password(user, password),
+      else: nil
+  end
+
+  defp maybe_rehash_password(%User{} = user, password) do
+    if Dunda.Security.Password.needs_rehash?(user.hashed_password) do
+      case user |> User.password_hash_changeset(password) |> Repo.update() do
+        {:ok, updated} -> updated
+        {:error, _changeset} -> user
+      end
+    else
+      user
+    end
   end
 
   @doc """

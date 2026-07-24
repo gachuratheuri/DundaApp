@@ -29,8 +29,8 @@ defmodule DundaWeb.FallbackController do
     |> json(error("phase_0_containment"))
   end
 
-  def call(conn, {:error, reason}) when is_atom(reason) do
-    conn |> put_status(:bad_request) |> json(error(Atom.to_string(reason)))
+  def call(conn, {:error, reason}) do
+    conn |> put_status(:bad_request) |> json(error(DundaWeb.ErrorCode.code(reason)))
   end
 
   defp error(code), do: %{error: %{code: code}}

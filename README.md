@@ -78,9 +78,20 @@ The backend exposes a JSON API (Phoenix + Bandit):
 |---|---|---|
 | `GET` | `/healthz` | Liveness/readiness (Postgres + Redis) |
 | `GET` | `/api/events` | Published upcoming catalogue with stable cursor pagination and per-tier live remaining inventory |
-| `POST` | `/api/checkout` | Reserve a tier (optional `tier_id`; defaults to cheapest on-sale) + M-Pesa STK push. Buyer is always the authenticated user. |
+| `POST` | `/api/quotes` | Create an expiring server-authoritative quote for the authenticated buyer. |
+| `POST` | `/api/checkout` | Reserve the quoted tier and create a provider-neutral payment intent. Requires `Idempotency-Key`. |
+| `GET` | `/api/checkout/:id/status` | Read an owned payment intent's durable state. |
 | `GET` | `/api/tickets` | Ticket metadata and protocol-v2 credential state for the QR vault |
-| `POST` | `/api/mpesa/callback` | Daraja STK result webhook |
+| `POST` | `/api/auth/refresh` | Rotate a device refresh token and issue a 15-minute access token. |
+| `POST` | `/api/auth/logout` | Revoke the current device session or all account sessions. |
+| `POST` | `/api/providers/:provider/events` | Durable provider-event ingress for `mpesa` and `pesapal` (containment-gated). |
+| `POST` | `/api/mpesa/b2c/result` | Daraja B2C result ingress; requires the configured callback query token or a trusted edge-injected header. |
+
+`POST /api/mpesa/callback` and the direct Pesapal IPN routes remain explicitly
+disabled. Daraja cannot supply a custom application header, so production must
+configure its exact B2C result URL with the high-entropy `token` query value,
+or terminate provider traffic at an allow-listed edge that injects
+`x-dunda-webhook-secret`. Query strings must be excluded from access logs.
 
 The organiser portal at `/portal` is session-authenticated (email/password via
 `/portal/login`); all LiveViews are guarded by an `on_mount` hook plus a plug.
@@ -124,12 +135,12 @@ release governance to the full five-stakeholder set. It also documents,
 rather than hides, what it found while writing that test suite: a Critical
 defect (no code path provisioned inventory for a newly created event, so the
 Phase 3–5 checkout authority did not function end-to-end — now fixed, see
-`test/dunda/events_inventory_pool_test.exs`) and a High one, still open,
-in organiser-portal authorization (`Dunda.Organisations.member?/3` is a real,
-working role check, but it gates exactly one action — editing an existing
-event — and nothing else; portal entry itself and every other mutating
-action are not role-gated). **Exit gate G12 is not met** — see
+`test/dunda/events_inventory_pool_test.exs`) and a High organiser-portal
+authorization gap. Portal entry is now membership-gated and tenant-sensitive
+mutations use context-level permission checks. **Exit gate G12 is not met** — see
 `docs/phase_12_verification_observability_rollout.md` for the full findings
-table and evidence linkage. This repository has not been compiled or run in
-the environment that authored these two phases; run the commands in that
-document's § Verification before relying on any of it.
+table and evidence linkage. On 24 July 2026 the backend compiled with warnings
+as errors, Credo and Dialyzer passed, and the frontend passed typecheck, lint,
+tests, dependency audit and a three-platform production export. The full
+database suite and migration drill still require PostgreSQL/Redis and remain a
+release-blocking CI gate.

@@ -18,8 +18,17 @@ defmodule DundaWeb.UserSocket do
   @impl true
   def connect(%{"token" => token}, socket, _connect_info) do
     case Token.verify(token) do
-      {:ok, user_id} -> {:ok, assign(socket, :user_id, user_id)}
-      _ -> :error
+      {:ok, %{"user_id" => user_id, "auth_version" => version}} ->
+        case Dunda.Accounts.get_user(user_id) do
+          %Dunda.Accounts.User{auth_version: ^version} ->
+            {:ok, assign(socket, :user_id, user_id)}
+
+          _ ->
+            :error
+        end
+
+      _ ->
+        :error
     end
   end
 

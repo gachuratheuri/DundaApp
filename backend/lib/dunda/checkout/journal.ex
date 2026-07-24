@@ -114,6 +114,7 @@ defmodule Dunda.Checkout.Journal do
   defp account_kind("cash"), do: "asset"
   defp account_kind("customer_suspense"), do: "liability"
   defp account_kind("organiser_payable"), do: "liability"
+  defp account_kind("seller_payable"), do: "liability"
   defp account_kind("refund_payable"), do: "liability"
   defp account_kind("platform_fee_revenue"), do: "revenue"
   defp account_kind(_), do: "control"

@@ -7,6 +7,7 @@ defmodule Dunda.Checkout.ProviderEvent do
     field :provider_event_id, :string
     field :provider_checkout_id, :string
     field :payload, :map, default: %{}
+    field :payload_encrypted, Dunda.Encrypted.Binary
     field :outcome, :string
     field :retry_count, :integer, default: 0
     field :received_at, :utc_datetime
@@ -22,6 +23,7 @@ defmodule Dunda.Checkout.ProviderEvent do
       :provider_event_id,
       :provider_checkout_id,
       :payload,
+      :payload_encrypted,
       :outcome,
       :retry_count,
       :received_at,

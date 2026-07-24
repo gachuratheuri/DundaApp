@@ -14,8 +14,8 @@ defmodule DundaWeb.Plugs.AuthPlug do
 
   def call(conn, _opts) do
     with ["Bearer " <> token] <- get_req_header(conn, "authorization"),
-         {:ok, user_id} <- Token.verify(token),
-         %Accounts.User{} = user <- Accounts.get_user(user_id) do
+         {:ok, %{"user_id" => user_id, "auth_version" => version}} <- Token.verify(token),
+         %Accounts.User{auth_version: ^version} = user <- Accounts.get_user(user_id) do
       assign(conn, :current_user, user)
     else
       _ ->

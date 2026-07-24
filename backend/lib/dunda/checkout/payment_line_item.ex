@@ -41,5 +41,8 @@ defmodule Dunda.Checkout.PaymentLineItem do
     |> unique_constraint([:payment_intent_id, :line_number],
       name: :payment_line_items_intent_line_unique
     )
+    |> unique_constraint(:payment_intent_id,
+      name: :payment_line_items_single_line_per_intent
+    )
   end
 end

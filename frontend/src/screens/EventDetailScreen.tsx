@@ -231,7 +231,7 @@ export const EventDetailScreen: React.FC<Props> = ({ event, onBack }) => {
   };
 
   const selectedTier = event.tiers?.find((tier) => tier.id === selectedTierId) ?? event.tiers?.find((tier) => tier.remaining > 0);
-  const selectedPriceCents = selectedTier?.price_kes ?? event.price_kes;
+  const selectedPriceCents = selectedTier?.price_cents ?? event.price_cents;
   const isSoldOut = selectedTier ? selectedTier.remaining === 0 : (event.sold_out || event.remaining === 0);
 
   const getButtonText = () => {
@@ -243,9 +243,9 @@ export const EventDetailScreen: React.FC<Props> = ({ event, onBack }) => {
   }).format(new Date(event.starts_at));
 
   const minPrice = event.tiers && event.tiers.length > 0
-    ? Math.min(...event.tiers.filter(t => t.remaining > 0).map(t => t.price_kes))
-    : event.price_kes;
-  const priceToUse = isFinite(minPrice) ? minPrice : event.price_kes;
+    ? Math.min(...event.tiers.filter(t => t.remaining > 0).map(t => t.price_cents))
+    : event.price_cents;
+  const priceToUse = isFinite(minPrice) ? minPrice : event.price_cents;
   const price = `KSh ${(priceToUse / 100).toLocaleString('en-KE')}/=`;
 
   const [isHovered, setIsHovered] = useState(false);
@@ -415,9 +415,9 @@ export const EventDetailScreen: React.FC<Props> = ({ event, onBack }) => {
             {/* Ticket types */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Tickets</Text>
-              {(event.tiers || [{ label: event.tier_label, price_kes: event.price_kes, sold: Math.max(0, 1000 - event.remaining), total: 1000, remaining: event.remaining, vip: event.is_vip }]).map((t) => {
+              {(event.tiers || [{ label: event.tier_label, price_cents: event.price_cents, sold: Math.max(0, 1000 - event.remaining), total: 1000, remaining: event.remaining, vip: event.is_vip }]).map((t) => {
                 const isLow = t.remaining <= 20 && t.remaining > 0;
-                const formattedPrice = `KSh ${(t.price_kes / 100).toLocaleString('en-KE')}/=`;
+                const formattedPrice = `KSh ${(t.price_cents / 100).toLocaleString('en-KE')}/=`;
                 return (
                   <Pressable
                     key={t.id || t.label}

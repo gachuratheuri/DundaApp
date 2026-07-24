@@ -68,19 +68,11 @@ if config_env() == :prod do
   config :dunda, :redis_role, :projection
   config :kernel, inet_dist_listen_min: 9100, inet_dist_listen_max: 9100
 
-  inventory_authority =
-    case System.get_env("INVENTORY_AUTHORITY", "postgres") do
-      "postgres" ->
-        :postgres
+  if System.get_env("INVENTORY_AUTHORITY", "postgres") != "postgres" do
+    raise "INVENTORY_AUTHORITY must be postgres; the Redis transactional path was removed"
+  end
 
-      "redis_legacy" ->
-        :redis_legacy
-
-      other ->
-        raise "unsupported INVENTORY_AUTHORITY=#{other}; use postgres or explicitly gated redis_legacy"
-    end
-
-  config :dunda, :inventory_authority, inventory_authority
+  config :dunda, :inventory_authority, :postgres
 
   config :dunda, DundaWeb.Endpoint,
     server: true,

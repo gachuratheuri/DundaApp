@@ -217,7 +217,7 @@ export default function ProfileScreen() {
 
   const handleLogout = async () => {
     triggerHaptic(Haptics.ImpactFeedbackStyle.Heavy);
-    await api.removeToken();
+    await api.logout();
     await api.removeUser();
     setIsAuthenticated(false);
     setUser(null);

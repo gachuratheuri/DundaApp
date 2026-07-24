@@ -17,7 +17,7 @@ defmodule DundaWeb.ResaleController do
   POST /api/resale/listings
   Creates a new listing.
   """
-  def create(conn, %{"ticket_id" => ticket_id, "asking_price_kes" => price}) do
+  def create(conn, %{"ticket_id" => ticket_id, "asking_price_cents" => price}) do
     user = conn.assigns.current_user
 
     case Repo.get(Ticket, ticket_id) do
@@ -40,8 +40,7 @@ defmodule DundaWeb.ResaleController do
       {:error, reason} ->
         conn
         |> put_status(:unprocessable_entity)
-        |> put_view(json: DundaWeb.ErrorJSON)
-        |> render(:"422", message: to_string(reason))
+        |> json(%{error: %{code: DundaWeb.ErrorCode.code(reason)}})
     end
   end
 
@@ -62,7 +61,9 @@ defmodule DundaWeb.ResaleController do
         conn |> put_status(:service_unavailable) |> json(%{error: %{code: "phase_0_containment"}})
 
       {:error, reason} ->
-        conn |> put_status(:unprocessable_entity) |> json(%{error: %{code: to_string(reason)}})
+        conn
+        |> put_status(:unprocessable_entity)
+        |> json(%{error: %{code: DundaWeb.ErrorCode.code(reason)}})
     end
   end
 

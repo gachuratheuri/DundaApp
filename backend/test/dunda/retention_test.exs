@@ -98,7 +98,7 @@ defmodule Dunda.RetentionTest do
     {:ok, ticket} =
       Ticket.changeset(%Ticket{}, %{
         tier_label: "GA",
-        price_kes: 1_000,
+        price_cents: 100_000,
         status: "valid",
         user_id: user.id,
         event_id: event.id,

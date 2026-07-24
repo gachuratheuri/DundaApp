@@ -10,9 +10,14 @@ defmodule DundaWeb.TicketCredentialController do
 
   defp challenge_open(conn, ticket_id) do
     case Credentials.device_challenge(ticket_id, conn.assigns.current_user.id) do
-      {:ok, challenge} -> json(conn, %{data: challenge})
-      {:error, :ticket_not_found} -> error(conn, :not_found, "ticket_not_found")
-      {:error, reason} -> error(conn, :unprocessable_entity, to_string(reason))
+      {:ok, challenge} ->
+        json(conn, %{data: challenge})
+
+      {:error, :ticket_not_found} ->
+        error(conn, :not_found, "ticket_not_found")
+
+      {:error, reason} ->
+        error(conn, :unprocessable_entity, DundaWeb.ErrorCode.code(reason))
     end
   end
 
@@ -56,7 +61,8 @@ defmodule DundaWeb.TicketCredentialController do
         }
       })
     else
-      {:error, reason} -> error(conn, :unprocessable_entity, to_string(reason))
+      {:error, reason} ->
+        error(conn, :unprocessable_entity, DundaWeb.ErrorCode.code(reason))
     end
   end
 

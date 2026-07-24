@@ -8,7 +8,8 @@ defmodule Dunda.Security.PasswordTest do
     second = Password.hash("correct horse battery staple")
 
     assert first != second
-    assert String.starts_with?(first, "pbkdf2_sha256$210000$")
+    assert String.starts_with?(first, "pbkdf2_sha256$600000$")
+    refute Password.needs_rehash?(first)
     assert Password.verify("correct horse battery staple", first)
     refute Password.verify("incorrect", first)
   end

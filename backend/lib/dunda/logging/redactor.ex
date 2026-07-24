@@ -7,8 +7,7 @@ defmodule Dunda.Logging.Redactor do
   This is defence-in-depth, not the primary control. The primary control is
   not putting the raw value in a log call in the first place — see the fixed
   call sites listed in `docs/phase_11_privacy_governance.md` § Log redaction
-  (`Dunda.Workers.MpesaPoller`, `Dunda.Billing.Pesapal.HTTP`,
-  `Dunda.Payments.Daraja.HTTP`, `DundaWeb.MpesaController`). The installed
+  (`Dunda.Billing.Pesapal.HTTP` and `Dunda.Payments.Daraja.HTTP`). The installed
   filter redacts *structured* metadata (`Logger.metadata/1`, report-style log
   calls) reliably by key name; it cannot parse arbitrary sensitive substrings
   out of an already-interpolated string with certainty, so `redact/1` also

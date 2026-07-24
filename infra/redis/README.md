@@ -12,6 +12,6 @@ and network policy restricting API-worker egress. The committed
 `redis.conf` is a non-production projection profile and is not a substitute
 for managed Redis ACL/TLS configuration.
 
-`INVENTORY_AUTHORITY=redis_legacy` is test/containment-only and must never be
-enabled by a production release approval. The old cross-pool Lua escrow path
-is not compatible with Redis Cluster; do not place it behind a cluster endpoint.
+`INVENTORY_AUTHORITY` must be `postgres`. The former cross-pool Lua escrow path
+and its distributed state machine have been removed; Redis cannot be selected
+as a transactional inventory authority.

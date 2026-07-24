@@ -9,6 +9,10 @@
     "/healthz": { "get": { "operationId": "healthz", "responses": { "200": { "$ref": "#/components/responses/Health" } } } },
     "/api/events": { "get": { "operationId": "listEvents", "responses": { "200": { "$ref": "#/components/responses/EventList" } } } },
     "/api/events/{id}": { "get": { "operationId": "showEvent", "responses": { "200": { "$ref": "#/components/responses/EventShow" }, "404": { "$ref": "#/components/responses/Error" } } } },
+    "/api/auth/register": { "post": { "operationId": "register", "responses": { "200": { "$ref": "#/components/responses/AuthSession" }, "422": { "$ref": "#/components/responses/Error" } } } },
+    "/api/auth/login": { "post": { "operationId": "login", "responses": { "200": { "$ref": "#/components/responses/AuthSession" }, "401": { "$ref": "#/components/responses/Error" } } } },
+    "/api/auth/refresh": { "post": { "operationId": "refreshSession", "responses": { "200": { "$ref": "#/components/responses/AuthSession" }, "401": { "$ref": "#/components/responses/Error" } } } },
+    "/api/auth/logout": { "post": { "operationId": "logout", "responses": { "204": { "description": "Session revoked" }, "401": { "$ref": "#/components/responses/Error" } } } },
     "/api/quotes": { "post": { "operationId": "createQuote", "responses": { "200": { "$ref": "#/components/responses/Quote" }, "422": { "$ref": "#/components/responses/Error" } } } },
     "/api/checkout": { "post": { "operationId": "createCheckout", "responses": { "202": { "$ref": "#/components/responses/PaymentIntent" }, "422": { "$ref": "#/components/responses/Error" } } } },
     "/api/checkout/{id}/status": { "get": { "operationId": "checkoutStatus", "responses": { "200": { "$ref": "#/components/responses/PaymentIntent" }, "404": { "$ref": "#/components/responses/Error" } } } },
@@ -22,6 +26,7 @@
       "Health": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Health" } } } },
       "EventList": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EventListEnvelope" } } } },
       "EventShow": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EventEnvelope" } } } },
+      "AuthSession": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AuthSession" } } } },
       "Quote": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/QuoteEnvelope" } } } },
       "PaymentIntent": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PaymentIntentEnvelope" } } } },
       "TicketList": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TicketListEnvelope" } } } },
@@ -36,16 +41,38 @@
         "required": ["status"],
         "properties": { "status": { "type": "string" } }
       },
+      "AuthSession": {
+        "type": "object",
+        "required": ["token", "access_token", "refresh_token", "token_type", "expires_in", "user"],
+        "properties": {
+          "token": { "type": "string" },
+          "access_token": { "type": "string" },
+          "refresh_token": { "type": "string" },
+          "token_type": { "type": "string", "enum": ["Bearer"] },
+          "expires_in": { "type": "integer", "enum": [900] },
+          "user": {
+            "type": "object",
+            "required": ["id", "auth_provider"],
+            "properties": {
+              "id": { "type": "integer" },
+              "email": { "type": ["string", "null"] },
+              "name": { "type": ["string", "null"] },
+              "avatar_url": { "type": ["string", "null"] },
+              "auth_provider": { "type": "string" }
+            }
+          }
+        }
+      },
       "Event": {
         "type": "object",
-        "description": "Matches DundaWeb.EventJSON.data/1 exactly — note `id` is a string and the price field is `price_kes` (denominated in cents despite the name; see that module's field-name caveat), not `price_cents`/`currency`/`status`, which this envelope does not expose.",
-        "required": ["id", "name", "venue", "starts_at", "price_kes", "remaining", "sold_out", "capacity"],
+        "description": "Matches DundaWeb.EventJSON.data/1 exactly. Monetary values are integer cents.",
+        "required": ["id", "name", "venue", "starts_at", "price_cents", "remaining", "sold_out", "capacity"],
         "properties": {
           "id": { "type": "string" },
           "name": { "type": "string" },
           "venue": { "type": "string" },
           "starts_at": { "type": "string" },
-          "price_kes": { "type": "integer" },
+          "price_cents": { "type": "integer" },
           "remaining": { "type": "integer" },
           "sold_out": { "type": "boolean" },
           "tier_label": { "type": "string" },
@@ -123,7 +150,7 @@
           "venue": { "type": "string" },
           "date_label": { "type": "string" },
           "tier_label": { "type": ["string", "null"] },
-          "face_value_kes": { "type": "integer" },
+          "face_value_cents": { "type": "integer" },
           "is_vip": { "type": "boolean" },
           "holder": { "type": "string" },
           "protocol_version": { "type": "integer" },
@@ -174,10 +201,16 @@
         "properties": {
           "data": {
             "type": "object",
-            "required": ["user", "tickets", "requests"],
+            "required": ["user", "tickets", "orders", "payment_intents", "resale_listings", "scans", "memberships", "consents", "requests"],
             "properties": {
               "user": { "type": "object" },
               "tickets": { "type": "array" },
+              "orders": { "type": "array" },
+              "payment_intents": { "type": "array" },
+              "resale_listings": { "type": "array" },
+              "scans": { "type": "array" },
+              "memberships": { "type": "array" },
+              "consents": { "type": "array" },
               "requests": { "type": "array" }
             }
           }

@@ -90,11 +90,17 @@ defmodule Dunda.Auth.OTP do
   defp normalize_phone(_), do: {:error, :invalid_phone}
 
   defp random_code do
-    :crypto.strong_rand_bytes(4)
-    |> :binary.decode_unsigned()
-    |> rem(1_000_000)
+    unbiased_integer(1_000_000)
     |> Integer.to_string()
     |> String.pad_leading(6, "0")
+  end
+
+  # Rejection sampling avoids modulo bias from mapping the 2^32 source space
+  # into one million codes.
+  defp unbiased_integer(modulus) do
+    value = :crypto.strong_rand_bytes(4) |> :binary.decode_unsigned()
+    acceptance_limit = div(4_294_967_296, modulus) * modulus
+    if value < acceptance_limit, do: rem(value, modulus), else: unbiased_integer(modulus)
   end
 
   defp digest(phone, code) do

@@ -45,13 +45,11 @@ defmodule DundaWeb.ScannerController do
             event_id: manifest.event_id,
             version: manifest.version,
             key_id: manifest.key_id,
-            payload: manifest.payload,
+            signed_document: Manifests.document(manifest),
             payload_hash: manifest.payload_hash,
             signature: Base.url_encode64(manifest.signature, padding: false),
             valid_from: manifest.valid_from,
-            valid_until: manifest.valid_until,
-            manifest_public_key:
-              Base.url_encode64(Dunda.Ticketing.ManifestProtocol.public_key(), padding: false)
+            valid_until: manifest.valid_until
           }
         })
     end
@@ -110,5 +108,8 @@ defmodule DundaWeb.ScannerController do
   defp result(conn, {:error, reason}), do: error(conn, reason)
 
   defp error(conn, reason),
-    do: conn |> put_status(:unprocessable_entity) |> json(%{error: %{code: to_string(reason)}})
+    do:
+      conn
+      |> put_status(:unprocessable_entity)
+      |> json(%{error: %{code: DundaWeb.ErrorCode.code(reason)}})
 end

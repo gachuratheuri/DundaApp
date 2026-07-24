@@ -51,7 +51,7 @@ defmodule DundaWeb.ProviderEventsController do
         received_at: DateTime.utc_now() |> DateTime.truncate(:second)
       }
 
-      case Dunda.Checkout.record_provider_event(attrs) do
+      case Dunda.Checkout.record_provider_event_and_enqueue(attrs) do
         {:ok, %ProviderEvent{} = event} ->
           # Durable-intent-committed-then-ack (Invariant 9): the ack timer
           # stops here, at the point the provider event is durably
@@ -61,23 +61,19 @@ defmodule DundaWeb.ProviderEventsController do
           Dunda.Observability.gauge(:webhook_ack_ms_last, ack_ms)
           if ack_ms > 2_000, do: Dunda.Observability.increment(:webhook_ack_breach_total)
 
-          case Dunda.Workers.ProviderEventWorker.new(%{"provider_event_id" => event.id})
-               |> Oban.insert() do
-            {:ok, _job} ->
-              conn
-              |> put_status(:accepted)
-              |> json(%{data: %{provider_event_id: event.id, status: "durably_received"}})
+          conn
+          |> put_status(:accepted)
+          |> json(%{data: %{provider_event_id: event.id, status: "durably_received"}})
 
-            {:error, reason} ->
-              conn
-              |> put_status(:service_unavailable)
-              |> json(%{error: %{code: "provider_event_queued_failed", details: inspect(reason)}})
-          end
-
-        {:error, changeset} ->
+        {:error, %Ecto.Changeset{}} ->
           conn
           |> put_status(:unprocessable_entity)
-          |> json(%{error: %{code: "provider_event_invalid", details: inspect(changeset.errors)}})
+          |> json(%{error: %{code: "provider_event_invalid"}})
+
+        {:error, _reason} ->
+          conn
+          |> put_status(:service_unavailable)
+          |> json(%{error: %{code: "provider_event_queue_unavailable"}})
       end
     end
   end

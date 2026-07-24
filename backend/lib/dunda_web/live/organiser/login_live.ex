@@ -4,7 +4,7 @@ defmodule DundaWeb.Organiser.LoginLive do
   @impl true
   def mount(_params, _session, socket) do
     form = to_form(%{"email" => "", "password" => ""}, as: "user")
-    {:ok, assign(socket, form: form, trigger_submit: false, error: nil)}
+    {:ok, assign(socket, form: form, error: nil)}
   end
 
   @impl true
@@ -31,7 +31,7 @@ defmodule DundaWeb.Organiser.LoginLive do
             </div>
           <% end %>
 
-          <.form for={@form} action={~p"/portal/login"} phx-submit="login" phx-trigger-action={@trigger_submit} class="space-y-6">
+          <.form for={@form} action={~p"/portal/login"} method="post" class="space-y-6">
             <div>
               <label for="email" class="block text-xs uppercase tracking-widest text-gray-500 font-bold mb-2">Email Address</label>
               <input type="email" name="user[email]" value={@form.params["email"]} required class="w-full bg-black/60 border border-white/10 px-4 py-3 text-sm focus:border-opticyan focus:outline-none text-white transition-colors font-mono" />
@@ -52,25 +52,5 @@ defmodule DundaWeb.Organiser.LoginLive do
       </div>
     </div>
     """
-  end
-
-  @impl true
-  def handle_event("login", %{"user" => %{"email" => email, "password" => password}}, socket) do
-    case Dunda.Accounts.get_user_by_email_and_password(email, password) do
-      %Dunda.Accounts.User{} = user ->
-        if DundaWeb.PortalAccess.allowed?(user) do
-          # Valid credentials, trigger the POST request to the controller to write session
-          {:noreply, assign(socket, trigger_submit: true, error: nil)}
-        else
-          {:noreply, assign(socket, error: "Invalid email or password")}
-        end
-
-      _ ->
-        {:noreply,
-         assign(socket,
-           error: "Invalid email or password",
-           form: to_form(%{"email" => email, "password" => ""}, as: "user")
-         )}
-    end
   end
 end

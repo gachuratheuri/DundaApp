@@ -33,6 +33,7 @@ defmodule Dunda.Accounts.User do
     field :hashed_password, :string, redact: true
     field :password, :string, virtual: true, redact: true
     field :confirmed_at, :utc_datetime
+    field :auth_version, :integer, default: 1
 
     timestamps()
   end
@@ -105,6 +106,18 @@ defmodule Dunda.Accounts.User do
     |> validate_required([:email, :auth_provider])
     |> validate_inclusion(:auth_provider, @oauth_providers)
     |> unique_constraint(:email)
+  end
+
+  @doc false
+  def auth_version_changeset(user, auth_version) do
+    user
+    |> change(auth_version: auth_version)
+    |> validate_number(:auth_version, greater_than: 0)
+  end
+
+  @doc false
+  def password_hash_changeset(user, password) do
+    change(user, hashed_password: Dunda.Security.Password.hash(password))
   end
 
   @doc "Verify a plaintext password against the stored versioned hash (timing-safe)."

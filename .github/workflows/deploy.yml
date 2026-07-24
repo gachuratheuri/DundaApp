@@ -12,6 +12,9 @@ on:
 
 permissions:
   contents: read
+  actions: read
+  packages: write
+  id-token: write
 
 concurrency:
   group: deploy-${{ inputs.environment }}
@@ -27,6 +30,20 @@ jobs:
       NAMESPACE: ${{ vars.KUBERNETES_NAMESPACE }}
 
     steps:
+      - name: Require successful CI for this exact revision
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          conclusion="$(gh api \
+            "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${GITHUB_SHA}&per_page=10" \
+            --jq '[.workflow_runs[] | select(.event == "push" and .head_branch == "main")][0].conclusion // ""')"
+          test "$conclusion" = "success" || {
+            echo "::error::CI has not succeeded for immutable revision ${GITHUB_SHA}"
+            exit 1
+          }
+
       - name: Validate protected-environment configuration
         shell: bash
         run: |
@@ -70,6 +87,24 @@ jobs:
           chmod 600 "$RUNNER_TEMP/kube/config"
           echo "KUBECONFIG=$RUNNER_TEMP/kube/config" >> "$GITHUB_ENV"
 
+      - name: Scan published image for high and critical vulnerabilities
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.image.outputs.digest }}
+          format: table
+          exit-code: '1'
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign immutable image digest
+        shell: bash
+        env:
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        run: cosign sign --yes "${REGISTRY}/${IMAGE_NAME}@${IMAGE_DIGEST}"
+
       - name: Render immutable deployment manifest
         shell: bash
         env:
@@ -81,6 +116,24 @@ jobs:
             -e "s|namespace: default|namespace: ${NAMESPACE}|g" \
             -e "s|dundaregistry.azurecr.io/dunda-api@sha256:REPLACE_WITH_SIGNED_DIGEST|${REGISTRY}/${IMAGE_NAME}@sha256:${digest}|" \
             infra/k8s/deployment.yaml > "$RUNNER_TEMP/deployment.yaml"
+          revision="${GITHUB_SHA:0:12}"
+          sed \
+            -e "s|namespace: default|namespace: ${NAMESPACE}|g" \
+            -e "s|REPLACE_WITH_REVISION|${revision}|g" \
+            -e "s|dundaregistry.azurecr.io/dunda-api@sha256:REPLACE_WITH_SIGNED_DIGEST|${REGISTRY}/${IMAGE_NAME}@sha256:${digest}|" \
+            infra/k8s/migration-job.yaml > "$RUNNER_TEMP/migration-job.yaml"
+
+      - name: Run additive database migrations
+        shell: bash
+        run: |
+          set -euo pipefail
+          revision="${GITHUB_SHA:0:12}"
+          kubectl apply -f "$RUNNER_TEMP/migration-job.yaml"
+          if ! kubectl -n "$NAMESPACE" wait \
+            --for=condition=complete "job/dunda-migrate-${revision}" --timeout=15m; then
+            kubectl -n "$NAMESPACE" logs "job/dunda-migrate-${revision}" --all-containers=true
+            exit 1
+          fi
 
       - name: Apply manifests and verify rollout
         shell: bash

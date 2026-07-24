@@ -112,7 +112,7 @@ for org_n <- 1..organisations_count do
       {:ok, _ticket} =
         Ticket.changeset(%Ticket{}, %{
           tier_label: "REGULAR",
-          price_kes: div(tier.price_cents, 100),
+          price_cents: tier.price_cents,
           status: "valid",
           user_id: buyer.id,
           event_id: event.id,

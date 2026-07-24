@@ -27,7 +27,7 @@ import { Ionicons } from '@expo/vector-icons';
 export interface EventTier {
   id?: string;
   label: string;
-  price_kes: number;
+  price_cents: number;
   sold: number;
   total: number;
   remaining: number;
@@ -39,7 +39,7 @@ export interface AstralEvent {
   name: string;
   venue: string;
   starts_at: string;       // ISO 8601
-  price_kes: number;
+  price_cents: number;
   tier_label: string;
   is_vip: boolean;
   remaining: number;
@@ -154,7 +154,7 @@ export const AstralEventCard: React.FC<Props> = ({ event, onPress, variant = 'ca
 
   const formattedPrice = isSoldOut
     ? 'SOLD OUT'
-    : `KSh ${(event.price_kes / 100).toLocaleString('en-KE')}/=`;
+    : `KSh ${(event.price_cents / 100).toLocaleString('en-KE')}/=`;
 
   const handleHaptic = React.useCallback(() => {
     triggerHaptic(Haptics.ImpactFeedbackStyle.Light);

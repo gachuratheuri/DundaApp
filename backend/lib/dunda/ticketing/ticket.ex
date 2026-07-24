@@ -5,7 +5,7 @@ defmodule Dunda.Ticketing.Ticket do
   @primary_key {:id, :binary_id, autogenerate: true}
   schema "tickets" do
     field :tier_label, :string
-    field :price_kes, :integer
+    field :price_cents, :integer
     field :status, :string, default: "valid"
     field :jwt, :string
     field :holder_name, :string
@@ -41,7 +41,7 @@ defmodule Dunda.Ticketing.Ticket do
     |> cast(attrs, [
       :id,
       :tier_label,
-      :price_kes,
+      :price_cents,
       :status,
       :jwt,
       :user_id,
@@ -65,7 +65,7 @@ defmodule Dunda.Ticketing.Ticket do
       :credential_bound_at,
       :credential_epoch
     ])
-    |> validate_required([:tier_label, :price_kes, :status, :user_id, :event_id])
+    |> validate_required([:tier_label, :price_cents, :status, :user_id, :event_id])
     |> validate_inclusion(:status, ["valid", "transferred", "scanned", "revoked", "refunded"])
     |> validate_revocation_consistency()
     |> validate_credential_consistency()

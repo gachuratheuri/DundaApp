@@ -20,9 +20,6 @@ defmodule DundaWeb.PayoutController do
           {:ok, %Dunda.Organisations.PayoutBatch{} = batch} ->
             json(conn, %{status: "accepted", payout_batch_id: batch.id})
 
-          {:ok, payout} ->
-            json(conn, %{status: "accepted", payout_id: payout.id})
-
           {:error, reason} ->
             handle_reconciliation_error(conn, reason)
         end
@@ -44,21 +41,11 @@ defmodule DundaWeb.PayoutController do
   end
 
   defp reconcile(conversation_id, result_code, receipt) do
-    case Dunda.Organisations.Payouts.reconcile_batch_provider_result(
-           conversation_id,
-           result_code,
-           receipt
-         ) do
-      {:error, :payout_batch_not_found} ->
-        Dunda.Organisations.Payouts.reconcile_provider_result(
-          conversation_id,
-          result_code,
-          receipt
-        )
-
-      result ->
-        result
-    end
+    Dunda.Organisations.Payouts.reconcile_batch_provider_result(
+      conversation_id,
+      result_code,
+      receipt
+    )
   end
 
   defp handle_reconciliation_error(conn, :payout_not_found),

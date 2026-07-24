@@ -1,8 +1,12 @@
 defmodule Dunda.Workers.FinancialReconciliationWorker do
-  @moduledoc "Detects confirmed/fulfilled intents without their authoritative settlement journal."
+  @moduledoc """
+  Detects fulfilled intents without both their balanced settlement journal and
+  beneficiary-specific payable. Provider-pending truth is reconciled by
+  `PaymentReconciliationWorker`; this worker never races confirmed fulfilment.
+  """
   use Oban.Worker, queue: :payments, max_attempts: 5
   import Ecto.Query, only: [from: 2]
-  alias Dunda.Checkout.{PaymentIntent, JournalTransaction}
+  alias Dunda.Checkout.{JournalTransaction, PayableEntry, PaymentIntent}
   alias Dunda.Repo
 
   @impl Oban.Worker
@@ -13,16 +17,24 @@ defmodule Dunda.Workers.FinancialReconciliationWorker do
       intents =
         Repo.all(
           from p in PaymentIntent,
-            where: p.state in ["confirmed", "fulfilled", "confirmed_late"],
+            where: p.state == "fulfilled",
             limit: 1_000
         )
 
       diff_count =
         Enum.count(intents, fn intent ->
-          if is_nil(Repo.get_by(JournalTransaction, reference: "settlement:#{intent.id}")) do
+          journal = Repo.get_by(JournalTransaction, reference: "settlement:#{intent.id}")
+
+          payable =
+            Repo.get_by(PayableEntry,
+              source_type: "payment_intent",
+              source_id: intent.id
+            )
+
+          if is_nil(journal) or is_nil(payable) or payable.journal_transaction_id != journal.id do
             _ =
               Dunda.Checkout.advance_state(intent, "manual_review", %{
-                reason: "settlement_journal_missing"
+                reason: "settlement_or_beneficiary_payable_missing"
               })
 
             true

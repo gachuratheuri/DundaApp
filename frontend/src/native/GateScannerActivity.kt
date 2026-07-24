@@ -12,10 +12,11 @@ import org.json.JSONObject
  * cryptographic or replay guarantees.
  */
 class GateScannerActivity : AppCompatActivity() {
-    private val session = GateScannerSession()
+    private lateinit var session: GateScannerSession
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        session = GateScannerSession(ManifestTrustStore.loadPinnedKey(this))
         // setContentView(R.layout.activity_gate_scanner)
 
         initializeScannerHardware()
@@ -27,22 +28,13 @@ class GateScannerActivity : AppCompatActivity() {
 
     /** Called by the authenticated coordinator client after ManifestVerifier succeeds. */
     fun installManifest(
-        eventId: String,
         canonicalPayload: ByteArray,
         signature: ByteArray,
-        manifestPublicKey: ByteArray,
-        validFrom: Long,
-        validUntil: Long,
-        ticketKeys: List<GateScannerSession.TicketKey>,
-        revocations: List<GateScannerSession.Revocation>,
-    ): Boolean = session.installManifest(eventId, canonicalPayload, signature, manifestPublicKey, validFrom, validUntil, ticketKeys, revocations)
+    ): Boolean = session.installManifest(canonicalPayload, signature)
 
     fun onBarcodeScanned(payload: String) {
         val decision = try {
-            var separator = -1
-            repeat(3) { separator = payload.indexOf('.', separator + 1) }
-            require(separator > 0 && separator < payload.length - 1)
-            val proof = JSONObject(payload.substring(separator + 1))
+            val proof = JSONObject(payload)
             val rawNonce = Base64.decode(proof.getString("nonce"), Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
             val rawKey = Base64.decode(proof.getString("credential_public_key"), Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
             val signature = Base64.decode(proof.getString("signature"), Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)

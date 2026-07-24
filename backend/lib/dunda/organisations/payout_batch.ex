@@ -23,6 +23,7 @@ defmodule Dunda.Organisations.PayoutBatch do
     field :paid_at, :utc_datetime
 
     belongs_to :organisation, Dunda.Organisations.Organisation
+    belongs_to :beneficiary_user, Dunda.Accounts.User
     has_many :items, Dunda.Organisations.PayoutItem
 
     timestamps()
@@ -44,16 +45,28 @@ defmodule Dunda.Organisations.PayoutBatch do
       :submitted_at,
       :paid_at,
       :submission_started_at,
-      :organisation_id
+      :organisation_id,
+      :beneficiary_user_id
     ])
-    |> validate_required([:amount_cents, :currency, :status, :idempotency_key, :organisation_id])
+    |> validate_required([:amount_cents, :currency, :status, :idempotency_key])
     |> validate_number(:amount_cents, greater_than: 0)
     |> validate_inclusion(:status, @statuses)
     |> validate_length(:idempotency_key, min: 8, max: 255)
     |> assoc_constraint(:organisation)
+    |> assoc_constraint(:beneficiary_user)
+    |> validate_beneficiary()
     |> unique_constraint(:idempotency_key)
     |> unique_constraint(:b2c_conversation_id)
     |> validate_transition()
+  end
+
+  defp validate_beneficiary(changeset) do
+    organisation_id = get_field(changeset, :organisation_id)
+    user_id = get_field(changeset, :beneficiary_user_id)
+
+    if (organisation_id && is_nil(user_id)) || (user_id && is_nil(organisation_id)),
+      do: changeset,
+      else: add_error(changeset, :organisation_id, "exactly one beneficiary is required")
   end
 
   defp validate_transition(changeset) do
